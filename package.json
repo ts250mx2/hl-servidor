@@ -1,0 +1,35 @@
+{
+  "name": "hl-servidor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Portal y webservice para administrar llaves de API de IA (Claude, OpenAI y otros)",
+  "scripts": {
+    "dev": "node server.js --dev --port 3055",
+    "build": "next build",
+    "start": "node server.js --port 3056",
+    "lint": "eslint",
+    "seed": "tsx scripts/seed.ts",
+    "hash": "tsx scripts/hash-password.ts",
+    "ws": "tsx scripts/probar-ws.ts"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cookie": "^1.1.1",
+    "lucide-react": "^1.14.0",
+    "mysql2": "^3.22.3",
+    "next": "16.2.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "babel-plugin-react-compiler": "1.0.0",
+    "dotenv": "^17.2.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.4",
+    "tsx": "^4.21.0",
+    "typescript": "^5"
+  }
+}
