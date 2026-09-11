@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bot, KeyRound, KeySquare, LayoutDashboard, ScrollText, ShieldCheck, Users } from 'lucide-react';
+import { BarChart3, Bot, KeyRound, KeySquare, LayoutDashboard, ScrollText, ShieldCheck, Users } from 'lucide-react';
 import { useSidebar } from './SidebarContext';
 import styles from './Sidebar.module.css';
 
@@ -14,6 +14,7 @@ const LINKS = [
   { href: '/ips', label: 'IPs permitidas', icon: ShieldCheck },
   { href: '/usuarios', label: 'Usuarios', icon: Users },
   { href: '/bitacora', label: 'Bitácora', icon: ScrollText },
+  { href: '/estadisticas', label: 'Estadísticas', icon: BarChart3 },
 ];
 
 export default function Sidebar() {

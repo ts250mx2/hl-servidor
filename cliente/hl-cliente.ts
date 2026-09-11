@@ -74,6 +74,18 @@ function leerConfig(): HlClienteConfig {
   };
 }
 
+/** Node envuelve la causa real (ECONNREFUSED, TLS, DNS) en "fetch failed"; aqui se saca a la luz. */
+function describirErrorRed(error: unknown, baseUrl: string): string {
+  const causa = error instanceof Error && error.cause instanceof Error ? error.cause.message : '';
+  const mensaje = error instanceof Error ? error.message : 'error de red';
+  const detalle = causa ? `${mensaje} (${causa})` : mensaje;
+  const pareceTls = /ssl|tls|wrong version|certificate|EPROTO/i.test(causa);
+  if (baseUrl.startsWith('https://') && pareceTls) {
+    return `${detalle}. HL Servidor sirve HTTP plano; si no esta detras de un proxy con certificado, usa http:// en HL_URL`;
+  }
+  return detalle;
+}
+
 async function consultarWs(config: HlClienteConfig): Promise<LlaveIA> {
   const url = `${config.url}/api/ws/llave/${config.agente}`;
   let response: Response;
@@ -85,8 +97,7 @@ async function consultarWs(config: HlClienteConfig): Promise<LlaveIA> {
       cache: 'no-store',
     });
   } catch (error) {
-    const detalle = error instanceof Error ? error.message : 'error de red';
-    throw new HlClienteError(`No se pudo conectar con HL Servidor (${url}): ${detalle}`);
+    throw new HlClienteError(`No se pudo conectar con HL Servidor (${url}): ${describirErrorRed(error, config.url)}`);
   }
 
   let body: RespuestaWs;

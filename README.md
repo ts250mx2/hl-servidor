@@ -52,6 +52,7 @@ Usuario inicial del portal: `admin` / `admin123`. Cámbialo en **Usuarios** desp
 | **IPs permitidas** | Lista blanca del webservice. Viene con `127.0.0.1`, `::1` y `201.172.236.128`. |
 | **Usuarios** | Quién entra al portal (bcrypt). |
 | **Bitácora** | Cada consulta al webservice: IP, key, resultado. |
+| **Estadísticas** | Gráficas de llamadas al webservice por periodo y por agente, con filtro de rango de fechas, agente y aplicación. |
 
 Para **rotar el modelo** de una app: edita la llave y cambia el campo Modelo, o edita el agente y reasígnale otra llave. No hay que tocar la app.
 
