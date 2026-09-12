@@ -3,7 +3,7 @@ import './globals.css';
 import { ThemeProvider } from '@/components/ThemeProvider';
 
 export const metadata: Metadata = {
-  title: 'HL Servidor - Administrador de llaves',
+  title: 'HL Console - Administrador de llaves',
   description: 'Portal para administrar llaves de API de IA (Claude, OpenAI y otros)',
 };
 

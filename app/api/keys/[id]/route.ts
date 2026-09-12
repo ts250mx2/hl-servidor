@@ -1,11 +1,11 @@
 import type { NextRequest } from 'next/server';
 import pool from '@/lib/db';
 import { cleanText, fail, ok, parseId, parseStatus, withAuth } from '@/lib/api';
-import { generateAccessKey, hashAccessKey, keyPrefix } from '@/lib/crypto';
+import { encryptSecret, generateAccessKey, generateSharedSecret, hashAccessKey, keyPrefix } from '@/lib/crypto';
 
 type Ctx = { params: Promise<{ id: string }> };
 
-/** Actualiza nombre y status. Con { Regenerar: true } genera una Key nueva. */
+/** Actualiza nombre y status. Con { Regenerar: true } genera Key y secreto nuevos. */
 export async function PUT(request: NextRequest, ctx: Ctx) {
   return withAuth(async () => {
     const id = parseId((await ctx.params).id);
@@ -18,9 +18,10 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
     const fields = ['Nombre = ?', 'Status = ?'];
     const values: unknown[] = [nombre, parseStatus(body.Status)];
     const newKey = body.Regenerar === true ? generateAccessKey() : null;
-    if (newKey) {
-      fields.push('KeyHash = ?', 'KeyPrefijo = ?', 'UltimoUso = NULL');
-      values.push(hashAccessKey(newKey), keyPrefix(newKey));
+    const newSecret = newKey ? generateSharedSecret() : null;
+    if (newKey && newSecret) {
+      fields.push('KeyHash = ?', 'KeyPrefijo = ?', 'SecretoCifrado = ?', 'UltimoUso = NULL');
+      values.push(hashAccessKey(newKey), keyPrefix(newKey), encryptSecret(newSecret));
     }
 
     const [result] = await pool.query(
@@ -29,7 +30,7 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
     );
     const affected = (result as { affectedRows: number }).affectedRows;
     if (!affected) return fail('Key no encontrada', 404);
-    return ok({ IdKey: id, Key: newKey });
+    return ok({ IdKey: id, Key: newKey, Secreto: newSecret });
   });
 }
 

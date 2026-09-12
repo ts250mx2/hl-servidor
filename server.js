@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 /**
- * Servidor propio de HL Servidor.
+ * Servidor propio de HL Console.
  * Su única razón de existir: fijar X-Forwarded-For con la IP real del socket
  * para que la lista blanca de IPs del webservice no pueda falsificarse
  * mandando la cabecera desde el cliente.
@@ -39,7 +39,7 @@ app.prepare().then(() => {
     }
     handle(req, res);
   }).listen(port, () => {
-    console.log(`> HL Servidor escuchando en http://localhost:${port} (${dev ? 'desarrollo' : 'producción'})`);
+    console.log(`> HL Console escuchando en http://localhost:${port} (${dev ? 'desarrollo' : 'producción'})`);
     console.log(`> TRUST_PROXY=${trustProxy}`);
   });
 });

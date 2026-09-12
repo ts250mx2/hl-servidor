@@ -1,5 +1,5 @@
 -- =====================================================================
---  HL Servidor - Administrador de llaves de IA
+--  HL Console - Administrador de llaves de IA
 --  Script de creación de base de datos, usuario y tablas
 --  Ejecutar como root en MySQL 8.0 (Workbench o consola)
 -- =====================================================================
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS `tblUsuarios` (
 CREATE TABLE IF NOT EXISTS `tblLlaves` (
   `IdLlave`           INT NOT NULL AUTO_INCREMENT,
   `Llave`             VARCHAR(45)  NOT NULL COMMENT 'nombre descriptivo',
-  `Proveedor`         VARCHAR(30)  NOT NULL COMMENT 'claude | openai | gemini | otro',
+  `Proveedor`         VARCHAR(30)  NOT NULL COMMENT 'id de lib/providers.ts: claude, openai, gemini, deepseek, groq, mistral, xai, openrouter, kimi, qwen, glm, otro',
   `Modelo`            VARCHAR(100) NOT NULL COMMENT 'ej. claude-opus-4-8, gpt-5',
   `LlaveEncriptada`   TEXT         NOT NULL COMMENT 'AES-256-GCM base64: iv.tag.cifrado',
   `FechaCaducidad`    DATETIME     NULL,
@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS `tblKeys` (
   `Nombre`     VARCHAR(80) NOT NULL COMMENT 'nombre de la aplicación que la usa',
   `KeyHash`    CHAR(64)    NOT NULL,
   `KeyPrefijo` VARCHAR(12) NOT NULL COMMENT 'primeros caracteres para identificarla',
+  `SecretoCifrado` TEXT NULL COMMENT 'secreto compartido cifrado con MASTER_KEY; con el se cifra la llave en la respuesta del webservice',
   `Status`     INT NOT NULL DEFAULT 1,
   `UltimoUso`  DATETIME NULL,
   `FechaAlta`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -95,8 +96,12 @@ CREATE TABLE IF NOT EXISTS `tblBitacora` (
   `Fecha`      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `IP`         VARCHAR(45) NOT NULL,
   `KeyPrefijo` VARCHAR(12) NULL,
+  `IdKey`      INT NULL COMMENT 'key de acceso usada',
+  `Aplicacion` VARCHAR(80) NULL COMMENT 'nombre de la aplicacion al momento de la llamada',
   `IdAgente`   INT NULL,
-  `Resultado`  VARCHAR(20) NOT NULL COMMENT 'OK | IP_BLOQUEADA | KEY_INVALIDA | AGENTE_INVALIDO | AGENTE_INACTIVO | LLAVE_INACTIVA | CADUCADO | ERROR',
+  `Proveedor`  VARCHAR(30)  NULL COMMENT 'proveedor de la llave del agente al momento de la llamada',
+  `Modelo`     VARCHAR(100) NULL COMMENT 'modelo de la llave del agente al momento de la llamada',
+  `Resultado`  VARCHAR(20) NOT NULL COMMENT 'OK | IP_BLOQUEADA | KEY_INVALIDA | AGENTE_INVALIDO | AGENTE_INACTIVO | LLAVE_INACTIVA | CADUCADO | PROVEEDOR_CAMBIADO | ERROR',
   `Detalle`    VARCHAR(200) NULL,
   PRIMARY KEY (`IdBitacora`),
   KEY `ix_fecha` (`Fecha`)

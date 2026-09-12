@@ -7,28 +7,34 @@ const MAX_RANGE_DAYS = 366;
 /** Hasta este numero de dias se agrupa por dia; despues, por mes. */
 const DAILY_MAX_DAYS = 120;
 /** Hasta este numero de dias se agrupa por hora. */
-const HOURLY_MAX_DAYS = 2;
+const HOURLY_MAX_DAYS = 3;
 const MS_POR_DIA = 86_400_000;
+const DATETIME_LOCAL_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
 export type Granularidad = 'hora' | 'dia' | 'mes';
+export type Agrupar = 'agente' | 'aplicacion' | 'proveedor' | 'modelo';
 
 export interface SerieRow {
   periodo: string;
-  IdAgente: number | null;
-  Agente: string | null;
+  clave: string | null;
+  etiqueta: string | null;
   total: number;
 }
 
-export interface PorAgenteRow {
-  IdAgente: number | null;
-  Agente: string | null;
+export interface PorGrupoRow {
+  clave: string | null;
+  etiqueta: string | null;
   total: number;
   ok: number;
 }
 
+/** Acepta "YYYY-MM-DD" (dia completo) o "YYYY-MM-DDTHH:mm" (minuto completo). */
 function parseFecha(raw: string | null, fin: boolean): Date | null {
   if (!raw) return null;
-  const d = new Date(raw.length === 10 ? `${raw}T${fin ? '23:59:59' : '00:00:00'}` : raw);
+  let texto = raw;
+  if (raw.length === 10) texto = `${raw}T${fin ? '23:59:59' : '00:00:00'}`;
+  else if (DATETIME_LOCAL_RE.test(raw)) texto = `${raw}:${fin ? '59' : '00'}`;
+  const d = new Date(texto);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
@@ -45,10 +51,21 @@ const FORMATO_PERIODO: Record<Granularidad, string> = {
   mes: '%Y-%m-01',
 };
 
+/** Expresiones SQL de clave y etiqueta para cada dimension de agrupacion. */
+const DIMENSIONES: Record<Agrupar, { clave: string; etiqueta: string }> = {
+  agente: { clave: 'CAST(b.IdAgente AS CHAR)', etiqueta: 'a.Agente' },
+  aplicacion: { clave: 'CAST(b.IdKey AS CHAR)', etiqueta: 'b.Aplicacion' },
+  proveedor: { clave: 'b.Proveedor', etiqueta: 'b.Proveedor' },
+  modelo: { clave: 'b.Modelo', etiqueta: 'b.Modelo' },
+};
+
+function parseAgrupar(raw: string | null): Agrupar {
+  return raw === 'aplicacion' || raw === 'proveedor' || raw === 'modelo' ? raw : 'agente';
+}
+
 /**
- * GET /api/estadisticas?desde=YYYY-MM-DD&hasta=YYYY-MM-DD[&agente=IdAgente][&key=IdKey][&soloOk=1]
- * Llamadas al webservice agrupadas por periodo y por agente, dentro del rango.
- * La bitacora guarda el prefijo de la key, por eso el filtro por aplicacion se resuelve a KeyPrefijo.
+ * GET /api/estadisticas?desde=&hasta=[&agente=IdAgente][&key=IdKey][&soloOk=1][&agrupar=agente|aplicacion|proveedor|modelo]
+ * Llamadas al webservice agrupadas por periodo y por la dimension elegida, dentro del rango.
  */
 export async function GET(request: NextRequest) {
   return withAuth(async () => {
@@ -64,6 +81,8 @@ export async function GET(request: NextRequest) {
     const idAgente = params.get('agente') ? parseId(params.get('agente') as string) : null;
     const idKey = params.get('key') ? parseId(params.get('key') as string) : null;
     const soloOk = params.get('soloOk') === '1';
+    const agrupar = parseAgrupar(params.get('agrupar'));
+    const dim = DIMENSIONES[agrupar];
 
     const condiciones = ['b.Fecha BETWEEN ? AND ?'];
     const valores: unknown[] = [desde, hasta];
@@ -73,11 +92,8 @@ export async function GET(request: NextRequest) {
       valores.push(idAgente);
     }
     if (idKey) {
-      const [keys] = await pool.query('SELECT KeyPrefijo FROM tblKeys WHERE IdKey = ? LIMIT 1', [idKey]);
-      const key = (keys as { KeyPrefijo: string }[])[0];
-      if (!key) return fail('La aplicacion no existe', 404);
-      condiciones.push('b.KeyPrefijo = ?');
-      valores.push(key.KeyPrefijo);
+      condiciones.push('b.IdKey = ?');
+      valores.push(idKey);
     }
     if (soloOk) condiciones.push("b.Resultado = 'OK'");
 
@@ -86,21 +102,21 @@ export async function GET(request: NextRequest) {
     const formato = FORMATO_PERIODO[granularidad];
 
     const [serie] = await pool.query(
-      `SELECT DATE_FORMAT(b.Fecha, ?) AS periodo, b.IdAgente, a.Agente, COUNT(*) AS total
+      `SELECT DATE_FORMAT(b.Fecha, ?) AS periodo, ${dim.clave} AS clave, ${dim.etiqueta} AS etiqueta, COUNT(*) AS total
        FROM tblBitacora b
        LEFT JOIN tblAgentes a ON a.IdAgente = b.IdAgente
        WHERE ${where}
-       GROUP BY periodo, b.IdAgente, a.Agente
-       ORDER BY periodo, b.IdAgente`,
+       GROUP BY periodo, clave, etiqueta
+       ORDER BY periodo, clave`,
       [formato, ...valores]
     );
 
-    const [porAgente] = await pool.query(
-      `SELECT b.IdAgente, a.Agente, COUNT(*) AS total, SUM(b.Resultado = 'OK') AS ok
+    const [porGrupo] = await pool.query(
+      `SELECT ${dim.clave} AS clave, ${dim.etiqueta} AS etiqueta, COUNT(*) AS total, SUM(b.Resultado = 'OK') AS ok
        FROM tblBitacora b
        LEFT JOIN tblAgentes a ON a.IdAgente = b.IdAgente
        WHERE ${where}
-       GROUP BY b.IdAgente, a.Agente
+       GROUP BY clave, etiqueta
        ORDER BY total DESC`,
       valores
     );
@@ -109,8 +125,9 @@ export async function GET(request: NextRequest) {
       desde,
       hasta,
       granularidad,
+      agrupar,
       serie: (serie as SerieRow[]).map((r) => ({ ...r, total: Number(r.total) })),
-      porAgente: (porAgente as PorAgenteRow[]).map((r) => ({ ...r, total: Number(r.total), ok: Number(r.ok) })),
+      porGrupo: (porGrupo as PorGrupoRow[]).map((r) => ({ ...r, total: Number(r.total), ok: Number(r.ok) })),
     });
   });
 }

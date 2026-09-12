@@ -1,7 +1,7 @@
 /**
  * Ejemplo: como una app obtiene su llave y arma el cliente del proveedor.
  * Ejecutar desde este repo con los datos reales:
- *   HL_URL=http://localhost:3055 HL_KEY=hl_... HL_AGENTE=<uuid> npx tsx cliente/ejemplo-uso.ts
+ *   HL_URL=http://localhost:3055 HL_KEY=hl_... HL_SECRET=... HL_AGENTE=<uuid> npx tsx cliente/ejemplo-uso.ts
  */
 import { obtenerLlave, HlClienteError } from './hl-cliente';
 
@@ -20,7 +20,7 @@ async function main() {
 
 main().catch((error) => {
   if (error instanceof HlClienteError) {
-    console.error(`HL Servidor (${error.status ?? 'sin respuesta'}): ${error.message}`);
+    console.error(`HL Console (${error.status ?? 'sin respuesta'}): ${error.message}`);
   } else {
     console.error(error);
   }

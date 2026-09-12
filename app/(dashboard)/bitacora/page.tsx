@@ -4,13 +4,17 @@ import { useCallback, useState } from 'react';
 import { useLoad } from '@/lib/hooks';
 import { RefreshCw, ScrollText } from 'lucide-react';
 import { api, fmtDate } from '@/lib/client';
+import { ProviderBadge } from '@/components/ProviderMark';
 
 interface LogRow {
   IdBitacora: number;
   Fecha: string;
   IP: string;
   KeyPrefijo: string | null;
+  Aplicacion: string | null;
   Agente: string | null;
+  Proveedor: string | null;
+  Modelo: string | null;
   Resultado: string;
   Detalle: string | null;
 }
@@ -46,7 +50,7 @@ export default function BitacoraPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title"><ScrollText size={26} /> Bitácora del webservice</h1>
-          <p className="page-sub">Cada consulta a <code>/api/ws/llave</code>, aceptada o rechazada.</p>
+          <p className="page-sub">Cada consulta a <code>/api/ws/llave</code> y al proxy <code>/api/ws/proxy</code>, aceptada o rechazada.</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{ width: 'auto' }}>
@@ -71,15 +75,20 @@ export default function BitacoraPage() {
 
       <div className="table-wrap">
         <table className="tbl">
-          <thead><tr><th>Fecha</th><th>IP</th><th>Key</th><th>Agente</th><th>Resultado</th><th>Detalle</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>IP</th><th>Aplicación</th><th>Agente</th><th>Proveedor</th><th>Modelo</th><th>Resultado</th><th>Detalle</th></tr></thead>
           <tbody>
-            {visible.length === 0 && <tr><td colSpan={6} className="empty">Sin registros.</td></tr>}
+            {visible.length === 0 && <tr><td colSpan={8} className="empty">Sin registros.</td></tr>}
             {visible.map((l) => (
               <tr key={l.IdBitacora}>
                 <td>{fmtDate(l.Fecha)}</td>
                 <td className="mono">{l.IP}</td>
-                <td className="mono">{l.KeyPrefijo ? `${l.KeyPrefijo}…` : '—'}</td>
+                <td>
+                  {l.Aplicacion ?? <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                  {l.KeyPrefijo && <div className="mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{l.KeyPrefijo}…</div>}
+                </td>
                 <td>{l.Agente ?? '—'}</td>
+                <td>{l.Proveedor ? <ProviderBadge id={l.Proveedor} short /> : '—'}</td>
+                <td className="mono">{l.Modelo ?? '—'}</td>
                 <td>{badge(l.Resultado)}</td>
                 <td style={{ color: 'var(--text-muted)' }}>{l.Detalle ?? ''}</td>
               </tr>

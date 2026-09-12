@@ -2,7 +2,7 @@
   "name": "hl-servidor",
   "version": "1.0.0",
   "private": true,
-  "description": "Portal y webservice para administrar llaves de API de IA (Claude, OpenAI y otros)",
+  "description": "HL Console: portal, webservice y proxy para administrar llaves de API de IA",
   "scripts": {
     "dev": "node server.js --dev --port 3055",
     "build": "next build",

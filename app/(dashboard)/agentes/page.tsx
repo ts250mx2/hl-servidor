@@ -5,6 +5,7 @@ import { useLoad } from '@/lib/hooks';
 import { Bot, Check, Copy, Pencil, Plus, Trash2 } from 'lucide-react';
 import Modal from '@/components/Modal';
 import SearchSelect from '@/components/SearchSelect';
+import { ProviderBadge } from '@/components/ProviderMark';
 import { api, fmtDate } from '@/lib/client';
 import { providerLabel } from '@/lib/providers';
 
@@ -138,7 +139,7 @@ export default function AgentesPage() {
                 <td><strong>{a.Agente}</strong></td>
                 <td><UuidCell uuid={a.Uuid} /></td>
                 <td>{a.Llave}</td>
-                <td><span className="badge badge-info">{providerLabel(a.Proveedor)}</span> <span className="mono">{a.Modelo}</span></td>
+                <td><span className="pbadge"><ProviderBadge id={a.Proveedor} short /><code style={{ color: 'var(--text-muted)' }}>{a.Modelo}</code></span></td>
                 <td>{fmtDate(a.FechaModificacion)}</td>
                 <td>{estado(a)}</td>
                 <td>

@@ -1,9 +1,9 @@
-# HL Servidor · Administrador de llaves de IA
+# HL Console · Administrador de llaves de IA
 
 Portal + webservice para guardar cifradas las llaves de API de Claude, OpenAI, Gemini y los modelos que vayan saliendo. Tus aplicaciones ya no llevan la llave en su `.env`: llevan una **Key de acceso** y piden un **Agente** por UUID. El agente apunta a una **Llave de API** (proveedor + modelo + llave) y eso es lo que recibe la app. Cambias la llave del agente o el modelo de la llave aquí, y todas las apps lo toman en su siguiente consulta.
 
 ```
-Aplicación ──(X-HL-Key + UUID del agente)──▶ HL Servidor
+Aplicación ──(X-HL-Key + UUID del agente)──▶ HL Console
                                               Agente ──▶ Llave de API (proveedor, modelo, llave cifrada)
 Aplicación ◀──(proveedor, modelo, llave)──────┘
 ```
@@ -51,8 +51,8 @@ Usuario inicial del portal: `admin` / `admin123`. Cámbialo en **Usuarios** desp
 | **Keys de acceso** | Credencial de cada aplicación. Se muestra una sola vez; en la base solo queda su hash SHA-256. |
 | **IPs permitidas** | Lista blanca del webservice. Viene con `127.0.0.1`, `::1` y `201.172.236.128`. |
 | **Usuarios** | Quién entra al portal (bcrypt). |
-| **Bitácora** | Cada consulta al webservice: IP, key, resultado. |
-| **Estadísticas** | Gráficas de llamadas al webservice por periodo y por agente, con filtro de rango de fechas, agente y aplicación. |
+| **Bitácora** | Cada consulta al webservice y al proxy: IP, aplicación, agente, proveedor, modelo y resultado. |
+| **Estadísticas** | Gráficas de llamadas por periodo agrupadas por agente, aplicación, proveedor o modelo, con rango de fechas, filtro por agente y aplicación, y zoom arrastrando sobre la gráfica. |
 
 Para **rotar el modelo** de una app: edita la llave y cambia el campo Modelo, o edita el agente y reasígnale otra llave. No hay que tocar la app.
 
@@ -79,62 +79,87 @@ Respuesta correcta:
     "agente": "Tapi POS Opus",
     "proveedor": "claude",
     "modelo": "claude-opus-4-8",
-    "llave": "sk-ant-...",
+    "llave": null,
+    "llaveCifrada": "base64(iv).base64(tag).base64(cifrado)",
+    "cifrado": "aes-256-gcm",
     "caducidad": null
   },
   "error": null
 }
 ```
 
+La llave de API viaja **cifrada con el secreto compartido de la Key** (AES-256-GCM). El secreto se muestra una sola vez al crear o regenerar la Key y nunca viaja en la petición, así que quien vea el tráfico HTTP no puede descifrarla. `cliente/hl-cliente.ts` la descifra con `HL_SECRET`. Una Key creada antes de la migración no tiene secreto: el portal la marca **Sin secreto** y la llave viaja en claro (`llave`) hasta que la regeneres.
+
 Errores: `403` IP no autorizada, agente inactivo, llave inactiva o caducada; `401` key inválida o desactivada; `404` UUID que no existe; `400` UUID ausente o mal formado. Todo queda en la bitácora.
 
 Si la base ya existía con la versión anterior (agentes con proveedor y modelo), ejecuta `db/migracion-agentes-llaves.sql` una sola vez. Conserva los UUID.
 
-### Ejemplo de cliente en Node (para tapioki-pos u otra app)
+Para agregar el secreto compartido a una base existente ejecuta `db/migracion-secreto.sql` una sola vez y después regenera cada Key desde el portal.
 
-```ts
-// lib/hl-llave.ts
-const HL_URL = process.env.HL_URL || 'http://localhost:3056/api/ws/llave';
-const HL_KEY = process.env.HL_KEY || '';
-const CACHE_MS = 5 * 60 * 1000;
+Para que la bitácora guarde proveedor y modelo en una base existente ejecuta `db/migracion-bitacora-modelo.sql` una sola vez, y `db/migracion-bitacora-aplicacion.sql` para que guarde la aplicación.
 
-const cache = new Map<string, { data: HlLlave; expira: number }>();
+### Cliente para tus apps
 
-export interface HlLlave { uuid: string; agente: string; proveedor: string; modelo: string; llave: string; caducidad: string | null }
-
-/** Pide al servidor la llave del agente indicado por UUID. */
-export async function obtenerLlave(agenteUuid: string): Promise<HlLlave> {
-  const hit = cache.get(agenteUuid);
-  if (hit && hit.expira > Date.now()) return hit.data;
-  const res = await fetch(`${HL_URL}/${agenteUuid}`, { headers: { 'X-HL-Key': HL_KEY }, cache: 'no-store' });
-  const body = await res.json();
-  if (!res.ok || !body.success) throw new Error(body.error || `HL Servidor respondió ${res.status}`);
-  cache.set(agenteUuid, { data: body.data, expira: Date.now() + CACHE_MS });
-  return body.data;
-}
-```
-
-Y en el `.env` de la app solo:
+En `cliente/` está `hl-cliente.ts`, un módulo sin dependencias que se copia a `lib/` de cada app. Lee estas variables, consulta el webservice, descifra la llave con el secreto y la cachea en memoria:
 
 ```
-HL_URL=http://localhost:3056/api/ws/llave
+HL_URL=http://127.0.0.1:3056
 HL_KEY=hl_xxxxxxxx...
-HL_AGENTE_ASISTENTE=3f9c2a7e-1b4d-4c8e-9a1f-2d5e6b7c8d9e
+HL_SECRET=0f3a...   (64 hex, se muestra junto con la Key)
+HL_AGENTE=3f9c2a7e-1b4d-4c8e-9a1f-2d5e6b7c8d9e
 ```
 
-Con Anthropic quedaría:
-
 ```ts
-const { modelo, llave } = await obtenerLlave(process.env.HL_AGENTE_ASISTENTE!);
+import { obtenerLlave } from '@/lib/hl-cliente';
+
+const { proveedor, modelo, llave } = await obtenerLlave();
 const client = new Anthropic({ apiKey: llave });
 await client.messages.create({ model: modelo, ... });
 ```
+
+Los pasos por aplicación están en `cliente/README.md`. Para probar desde este repo: `npm run ws -- <uuid> <key> <url> <secreto>`.
+
+### Proxy transparente (recomendado): la app nunca ve la llave
+
+En vez de pedir la llave, la app habla con el proveedor **a través de HL Console**. El proxy valida IP y `X-HL-Key`, inyecta la llave real del agente, sustituye el campo `model` por el modelo del agente y reenvía los bytes tal cual, incluido el streaming SSE. No interpreta ni limita las respuestas: tool use, visión, `stream: true`, todo pasa igual que contra el API oficial.
+
+```
+<HL_URL>/api/ws/proxy/<uuid>/<ruta del proveedor>
+
+POST /api/ws/proxy/<uuid>/v1/messages            -> https://api.anthropic.com/v1/messages
+POST /api/ws/proxy/<uuid>/v1/chat/completions    -> https://api.openai.com/v1/chat/completions
+POST /api/ws/proxy/<uuid>/v1beta/models/x:generateContent -> Gemini (el modelo de la URL se sustituye)
+También por proxy: DeepSeek, Groq, Mistral, xAI, OpenRouter, Kimi, Qwen y GLM (hablan el API de OpenAI, la app usa el SDK de OpenAI).
+
+**Cambio de proveedor en caliente.** Las apps cachean proveedor y modelo (`HL_TTL_MIN`). Si en el portal el agente pasa de Claude a OpenAI (o al revés) y la app sigue llamando con el SDK anterior (`/v1/messages` contra OpenAI, por ejemplo), el proxy no reenvía la llamada: responde `422` con `X-HL-Error: PROVEEDOR_CAMBIADO` (422 y no 409 porque los SDK reintentan el 409) y lo anota en la bitácora con ese resultado. La app debe volver a pedir `/api/ws/llave/<uuid>` y repetir la llamada con el SDK que corresponda (así lo hace `vidaurri-ia`, en `correrTurnoAgente`).
+Header obligatorio: X-HL-Key
+```
+
+Con el SDK oficial solo cambia la configuración; el `apiKey` es un relleno porque HL Console pone la real:
+
+```ts
+import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
+import { configProxy } from '@/lib/hl-cliente';
+
+const { baseURL, headers } = configProxy();   // lee HL_URL, HL_KEY, HL_AGENTE
+
+const anthropic = new Anthropic({ baseURL, apiKey: 'hl', defaultHeaders: headers });
+const openai = new OpenAI({ baseURL: `${baseURL}/v1`, apiKey: 'hl', defaultHeaders: headers });
+
+// El model que mandes se sustituye por el del agente; cambias de modelo en el portal sin tocar la app.
+const stream = await anthropic.messages.create({ model: 'x', max_tokens: 1024, stream: true, messages });
+```
+
+Para agregar un proveedor: una línea en `lib/providers.ts` (portal) y su destino en `lib/proxy-providers.ts` (proxy). Los compatibles con OpenAI solo necesitan la URL base.
+
+Ventajas frente a `/api/ws/llave`: quien comprometa el servidor de una app solo puede hacer llamadas a través de HL Console (con bitácora, lista de IPs y Key revocable), nunca obtiene la llave. Y cambiar de proveedor o modelo es editar el agente. Costo: un salto de red extra y HL Console pasa a ser parte del camino de cada llamada. Cada llamada queda en la bitácora con ruta y código de respuesta del proveedor.
 
 ## 4. Seguridad
 
 - **IP real:** `server.js` sobrescribe `X-Forwarded-For` con la IP del socket, así un cliente no puede falsificarla. Si algún día pones nginx/IIS delante, cambia `TRUST_PROXY=true` en `.env`.
 - **MySQL:** el usuario `hladministrador` solo existe para `localhost`, `127.0.0.1` y `201.172.236.128`. Cualquier otro origen es rechazado por MySQL aunque tenga la contraseña.
-- **HTTPS:** el webservice entrega la llave en claro al cliente autorizado. Entre localhost no hay riesgo. Si agregas IPs externas, pon el servicio detrás de HTTPS.
+- **Llave cifrada en tránsito:** el webservice entrega la llave de API cifrada con el secreto compartido de cada Key; la Key viaja en el header pero el secreto nunca. Aun así, si agregas IPs externas conviene poner el servicio detrás de HTTPS para proteger también la Key.
 - **Sesión del portal:** cookie firmada con HMAC (`SESSION_SECRET`), httpOnly, `SameSite=Strict`.
 
 ## 5. Estructura

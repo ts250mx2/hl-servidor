@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { useLoad } from '@/lib/hooks';
-import { Copy, KeyRound, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { Copy, KeyRound, Pencil, Plus, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react';
 import Modal from '@/components/Modal';
 import { api, fmtDate } from '@/lib/client';
 
@@ -13,21 +13,27 @@ interface KeyRow {
   Status: number;
   UltimoUso: string | null;
   FechaAlta: string;
+  TieneSecreto: number;
 }
+
+/** Key y secreto se muestran una sola vez, juntos. */
+interface Revelado { nombre: string; key: string; secreto: string | null; }
+type Credencial = 'key' | 'secreto';
+
 
 interface Form { Nombre: string; Status: boolean; }
 
-const WS_URL = 'http://localhost:3056/api/ws/llave';
+const WS_URL = 'http://localhost:3056';
 const COPIED_MS = 2000;
 
 export default function KeysPage() {
   const [items, setItems] = useState<KeyRow[]>([]);
   const [error, setError] = useState('');
   const [modal, setModal] = useState<{ id: number | null; form: Form } | null>(null);
-  const [revealed, setRevealed] = useState<{ nombre: string; key: string } | null>(null);
+  const [revealed, setRevealed] = useState<Revelado | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<Credencial | null>(null);
 
   const load = useCallback(async () => {
     const r = await api<KeyRow[]>('/api/keys');
@@ -51,22 +57,22 @@ export default function KeysPage() {
     setFormError('');
     const payload = { ...modal.form, Status: modal.form.Status ? 1 : 0 };
     const r = modal.id
-      ? await api<{ Key: string | null }>(`/api/keys/${modal.id}`, { method: 'PUT', body: JSON.stringify(payload) })
-      : await api<{ Key: string }>('/api/keys', { method: 'POST', body: JSON.stringify(payload) });
+      ? await api<{ Key: string | null; Secreto: string | null }>(`/api/keys/${modal.id}`, { method: 'PUT', body: JSON.stringify(payload) })
+      : await api<{ Key: string; Secreto: string }>('/api/keys', { method: 'POST', body: JSON.stringify(payload) });
     setSaving(false);
     if (!r.success) { setFormError(r.error || 'No se pudo guardar'); return; }
     setModal(null);
-    if (r.data?.Key) setRevealed({ nombre: modal.form.Nombre, key: r.data.Key });
+    if (r.data?.Key) setRevealed({ nombre: modal.form.Nombre, key: r.data.Key, secreto: r.data.Secreto });
     load();
   };
 
   const regenerate = async (k: KeyRow) => {
-    if (!confirm(`¿Regenerar la key de "${k.Nombre}"? La key anterior dejará de funcionar de inmediato.`)) return;
-    const r = await api<{ Key: string }>(`/api/keys/${k.IdKey}`, {
+    if (!confirm(`¿Regenerar la key y el secreto de "${k.Nombre}"? Los anteriores dejarán de funcionar de inmediato.`)) return;
+    const r = await api<{ Key: string; Secreto: string }>(`/api/keys/${k.IdKey}`, {
       method: 'PUT',
       body: JSON.stringify({ Nombre: k.Nombre, Status: k.Status, Regenerar: true }),
     });
-    if (r.success && r.data?.Key) { setRevealed({ nombre: k.Nombre, key: r.data.Key }); load(); }
+    if (r.success && r.data?.Key) { setRevealed({ nombre: k.Nombre, key: r.data.Key, secreto: r.data.Secreto }); load(); }
     else alert(r.error || 'No se pudo regenerar');
   };
 
@@ -76,14 +82,16 @@ export default function KeysPage() {
     if (r.success) load(); else alert(r.error || 'No se pudo eliminar');
   };
 
-  const copy = async () => {
+  const copy = async (cual: Credencial) => {
     if (!revealed) return;
+    const valor = cual === 'key' ? revealed.key : revealed.secreto;
+    if (!valor) return;
     try {
-      await navigator.clipboard.writeText(revealed.key);
-      setCopied(true);
-      setTimeout(() => setCopied(false), COPIED_MS);
+      await navigator.clipboard.writeText(valor);
+      setCopied(cual);
+      setTimeout(() => setCopied(null), COPIED_MS);
     } catch {
-      setCopied(false);
+      setCopied(null);
     }
   };
 
@@ -92,7 +100,7 @@ export default function KeysPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title"><KeyRound size={26} /> Keys de acceso</h1>
-          <p className="page-sub">Credencial de cada aplicación. La app manda su key en el header <code>X-HL-Key</code> junto con el UUID del agente que quiere usar.</p>
+          <p className="page-sub">Credencial de cada aplicación. La app manda su key en el header <code>X-HL-Key</code> junto con el UUID del agente. Con el secreto descifra la llave que recibe.</p>
         </div>
         <button className="btn btn-primary" onClick={openNew}><Plus size={18} /> Nueva key</button>
       </div>
@@ -102,20 +110,25 @@ export default function KeysPage() {
       <div className="table-wrap">
         <table className="tbl">
           <thead>
-            <tr><th>Aplicación</th><th>Key</th><th>Alta</th><th>Último uso</th><th>Estado</th><th></th></tr>
+            <tr><th>Aplicación</th><th>Key</th><th>Cifrado</th><th>Alta</th><th>Último uso</th><th>Estado</th><th></th></tr>
           </thead>
           <tbody>
-            {items.length === 0 && <tr><td colSpan={6} className="empty">No hay keys registradas.</td></tr>}
+            {items.length === 0 && <tr><td colSpan={7} className="empty">No hay keys registradas.</td></tr>}
             {items.map((k) => (
               <tr key={k.IdKey}>
                 <td><strong>{k.Nombre}</strong></td>
                 <td className="mono">{k.KeyPrefijo}…</td>
+                <td>
+                  {k.TieneSecreto
+                    ? <span className="badge badge-ok">Con secreto</span>
+                    : <span className="badge badge-warn" title="La llave viaja en claro. Regenera la key para obtener un secreto."><ShieldAlert size={12} /> Sin secreto</span>}
+                </td>
                 <td>{fmtDate(k.FechaAlta)}</td>
                 <td>{fmtDate(k.UltimoUso)}</td>
                 <td>{k.Status === 1 ? <span className="badge badge-ok">Activa</span> : <span className="badge badge-off">Inactiva</span>}</td>
                 <td>
                   <div className="td-actions">
-                    <button className="btn-icon" onClick={() => regenerate(k)} title="Regenerar key"><RefreshCw size={17} /></button>
+                    <button className="btn-icon" onClick={() => regenerate(k)} title="Regenerar key y secreto"><RefreshCw size={17} /></button>
                     <button className="btn-icon" onClick={() => openEdit(k)} title="Editar"><Pencil size={17} /></button>
                     <button className="btn-icon" onClick={() => remove(k)} title="Eliminar"><Trash2 size={17} /></button>
                   </div>
@@ -152,15 +165,27 @@ export default function KeysPage() {
       )}
 
       {revealed && (
-        <Modal title={`Key para "${revealed.nombre}"`} onClose={() => setRevealed(null)}>
-          <div className="alert alert-warn">Copia esta key ahora. Por seguridad no se vuelve a mostrar: en la base solo queda su hash.</div>
-          <div className="key-box">
-            <code>{revealed.key}</code>
-            <button className="btn btn-ghost" onClick={copy}><Copy size={16} /> {copied ? 'Copiada' : 'Copiar'}</button>
+        <Modal title={`Credenciales para "${revealed.nombre}"`} onClose={() => setRevealed(null)}>
+          <div className="alert alert-warn">Copia estos valores ahora. Por seguridad no se vuelven a mostrar: de la key queda solo su hash y el secreto queda cifrado.</div>
+          <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+            <label>Key de acceso (header X-HL-Key)</label>
+            <div className="key-box">
+              <code>{revealed.key}</code>
+              <button className="btn btn-ghost" onClick={() => copy('key')}><Copy size={16} /> {copied === 'key' ? 'Copiada' : 'Copiar'}</button>
+            </div>
           </div>
+          {revealed.secreto && (
+            <div className="form-group">
+              <label>Secreto compartido (descifra la llave de API, nunca viaja)</label>
+              <div className="key-box">
+                <code>{revealed.secreto}</code>
+                <button className="btn btn-ghost" onClick={() => copy('secreto')}><Copy size={16} /> {copied === 'secreto' ? 'Copiado' : 'Copiar'}</button>
+              </div>
+            </div>
+          )}
           <p className="form-hint" style={{ marginTop: '1rem' }}>
-            En el .env de tu app: <code>HL_KEY={revealed.key}</code> y <code>HL_URL={WS_URL}</code>.
-            Después, en cada llamada manda el UUID del agente: <code>GET {WS_URL}/&lt;uuid&gt;</code>.
+            En el .env de tu app: <code>HL_URL={WS_URL}</code>, <code>HL_KEY=…</code>, <code>HL_SECRET=…</code> y <code>HL_AGENTE=&lt;uuid&gt;</code>.
+            El módulo <code>hl-cliente.ts</code> descifra la llave solo.
           </p>
           <div className="form-actions">
             <button className="btn btn-primary" onClick={() => setRevealed(null)}>Listo</button>

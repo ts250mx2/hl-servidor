@@ -4,8 +4,13 @@ import { useCallback, useState } from 'react';
 import { useLoad } from '@/lib/hooks';
 import { KeySquare, Pencil, Plus, Trash2 } from 'lucide-react';
 import Modal from '@/components/Modal';
+import ProviderPicker from '@/components/ProviderPicker';
+import { ProviderBadge } from '@/components/ProviderMark';
 import { api, fmtDate, toInputDate } from '@/lib/client';
-import { ALL_MODEL_SUGGESTIONS, MODEL_SUGGESTIONS, PROVIDERS, providerLabel, type ProviderId } from '@/lib/providers';
+import { MODEL_SUGGESTIONS, PROVIDERS, type ProviderId } from '@/lib/providers';
+
+/** Sugerencias de modelo solo del proveedor elegido; "otro" no tiene. */
+const suggestionsFor = (provider: ProviderId) => MODEL_SUGGESTIONS.filter((g) => g.provider === provider);
 
 interface Llave {
   IdLlave: number;
@@ -121,7 +126,7 @@ export default function LlavesPage() {
             {items.map((l) => (
               <tr key={l.IdLlave}>
                 <td><strong>{l.Llave}</strong></td>
-                <td><span className="badge badge-info">{providerLabel(l.Proveedor)}</span></td>
+                <td><ProviderBadge id={l.Proveedor} short /></td>
                 <td className="mono">{l.Modelo}</td>
                 <td className="mono">{l.LlaveMascara}</td>
                 <td>{fmtDate(l.FechaCaducidad)}</td>
@@ -144,23 +149,21 @@ export default function LlavesPage() {
           {formError && <div className="alert alert-error">{formError}</div>}
           <form onSubmit={save}>
             <div className="form-grid">
-              <div className="form-group">
+              <div className="form-group full">
                 <label>Nombre de la llave</label>
                 <input value={modal.form.Llave} onChange={(e) => setField('Llave', e.target.value)} maxLength={45} placeholder="Ej: Claude Opus producción" required autoFocus />
               </div>
-              <div className="form-group">
+              <div className="form-group full">
                 <label>Proveedor (IA)</label>
-                <select value={modal.form.Proveedor} onChange={(e) => setField('Proveedor', e.target.value as ProviderId)}>
-                  {PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                </select>
+                <ProviderPicker value={modal.form.Proveedor} onChange={(id) => setField('Proveedor', id)} />
               </div>
               <div className="form-group full">
                 <label>Modelo</label>
                 <input list="modelos" value={modal.form.Modelo} onChange={(e) => setField('Modelo', e.target.value)} maxLength={100} placeholder="Escribe cualquier modelo o elige una sugerencia" required />
-                <datalist id="modelos">{ALL_MODEL_SUGGESTIONS.map((m) => <option key={m} value={m} />)}</datalist>
-                <span className="form-hint">Campo libre: puedes escribir cualquier identificador. Cambia el modelo aquí y todos los agentes que usen esta llave lo tomarán en su siguiente consulta.</span>
+                <datalist id="modelos">{suggestionsFor(modal.form.Proveedor).flatMap((g) => g.models).map((m) => <option key={m} value={m} />)}</datalist>
+                <span className="form-hint">Campo libre: puedes escribir cualquier identificador. Las sugerencias son las del proveedor elegido. Cambia el modelo aquí y todos los agentes que usen esta llave lo tomarán en su siguiente consulta.</span>
                 <div className="chip-groups">
-                  {MODEL_SUGGESTIONS.map((group) => (
+                  {suggestionsFor(modal.form.Proveedor).map((group) => (
                     <div key={group.provider} className="chip-group">
                       <span className="chip-group-label">{group.label}</span>
                       <div className="chip-list">
