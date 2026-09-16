@@ -98,7 +98,11 @@ export async function proxyRequest(request: Request, uuid: string, pathSegments:
     await touchKey(key.IdKey);
     await logWs(ip, prefijo, key, agente, respuesta.ok ? 'OK' : 'ERROR', `${resumen} · ${respuesta.status}`);
 
-    return new Response(respuesta.body, { status: respuesta.status, headers: buildResponseHeaders(respuesta) });
+    const headersRespuesta = buildResponseHeaders(respuesta);
+    /* Con que proveedor y modelo se atendio: la app lo puede mostrar sin consultar /api/ws/llave. */
+    headersRespuesta.set('X-HL-Proveedor', agente.Proveedor);
+    headersRespuesta.set('X-HL-Modelo', agente.Modelo);
+    return new Response(respuesta.body, { status: respuesta.status, headers: headersRespuesta });
   } catch (error) {
     console.error('Proxy webservice error:', error);
     await logWs(ip, prefijo, key, agente, 'ERROR', `${resumen} · ${errorDetalle(error)}`);

@@ -122,7 +122,7 @@ Los pasos por aplicación están en `cliente/README.md`. Para probar desde este 
 
 ### Proxy transparente (recomendado): la app nunca ve la llave
 
-En vez de pedir la llave, la app habla con el proveedor **a través de HL Console**. El proxy valida IP y `X-HL-Key`, inyecta la llave real del agente, sustituye el campo `model` por el modelo del agente y reenvía los bytes tal cual, incluido el streaming SSE. No interpreta ni limita las respuestas: tool use, visión, `stream: true`, todo pasa igual que contra el API oficial.
+En vez de pedir la llave, la app habla con el proveedor **a través de HL Console**. El proxy valida IP y `X-HL-Key`, inyecta la llave real del agente, sustituye el campo `model` por el modelo del agente y reenvía los bytes tal cual, incluido el streaming SSE. No interpreta ni limita las respuestas: tool use, visión, `stream: true`, todo pasa igual que contra el API oficial. Cada respuesta del proxy lleva los headers `X-HL-Proveedor` y `X-HL-Modelo` con el proveedor y el modelo que la atendieron, para que la app lo muestre sin otra consulta.
 
 ```
 <HL_URL>/api/ws/proxy/<uuid>/<ruta del proveedor>
