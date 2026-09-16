@@ -18,10 +18,15 @@
 
 import { createDecipheriv } from 'node:crypto';
 
+/** API (SDK) que habla el proveedor. Elige el SDK por esto y no por el nombre del proveedor. */
+export type ApiIA = 'anthropic' | 'openai' | 'gemini';
+
 export interface LlaveIA {
   uuid: string;
   agente: string;
   proveedor: 'claude' | 'openai' | 'gemini' | 'otro' | string;
+  /** null si el proveedor no tiene proxy (modo "otro") o si HL es anterior a este campo. */
+  api: ApiIA | null;
   modelo: string;
   /** Llave de API ya descifrada, lista para el SDK del proveedor. */
   llave: string;
@@ -46,6 +51,7 @@ interface RespuestaWs {
     uuid: string;
     agente: string;
     proveedor: string;
+    api?: ApiIA | null;
     modelo: string;
     llave: string | null;
     llaveCifrada: string | null;
@@ -158,7 +164,8 @@ async function consultarWs(config: HlClienteConfig): Promise<LlaveIA> {
   }
 
   const { uuid, agente, proveedor, modelo, caducidad } = body.data;
-  return { uuid, agente, proveedor, modelo, caducidad, llave: extraerLlave(body.data, config) };
+  const api = body.data.api === 'anthropic' || body.data.api === 'openai' || body.data.api === 'gemini' ? body.data.api : null;
+  return { uuid, agente, proveedor, api, modelo, caducidad, llave: extraerLlave(body.data, config) };
 }
 
 interface CacheEntry {

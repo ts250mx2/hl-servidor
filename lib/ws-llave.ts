@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { decryptSecret, encryptWithKey } from './crypto';
+import { providerApi } from './providers';
 import { autenticarWs, denyWs, errorDetalle, logWs, touchKey } from './ws-auth';
 
 export { KEY_HEADER, AGENTE_HEADER } from './ws-auth';
@@ -45,6 +46,8 @@ export async function resolveLlave(request: Request, uuidFromPath?: string): Pro
           uuid: agente.Uuid,
           agente: agente.Agente,
           proveedor: agente.Proveedor,
+          /* API (SDK) que habla el proveedor: anthropic | openai | gemini | null. La app elige el SDK por esto, no por el nombre. */
+          api: providerApi(agente.Proveedor),
           modelo: agente.Modelo,
           ...entrega,
           caducidad: agente.FechaCaducidad,

@@ -78,6 +78,7 @@ Respuesta correcta:
     "uuid": "3f9c2a7e-1b4d-4c8e-9a1f-2d5e6b7c8d9e",
     "agente": "Tapi POS Opus",
     "proveedor": "claude",
+    "api": "anthropic",
     "modelo": "claude-opus-4-8",
     "llave": null,
     "llaveCifrada": "base64(iv).base64(tag).base64(cifrado)",
