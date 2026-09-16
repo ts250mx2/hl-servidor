@@ -1,16 +1,23 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useLoad } from '@/lib/hooks';
 import { Pencil, Plus, Trash2, Users } from 'lucide-react';
 import Modal from '@/components/Modal';
+import SearchBar, { SinCoincidencias } from '@/components/SearchBar';
+import { coincideTexto } from '@/lib/buscar';
 import { api, fmtDate } from '@/lib/client';
 
 interface UserRow { IdUsuario: number; Usuario: string; Login: string; Status: number; FechaAlta: string; }
 interface Form { Usuario: string; Login: string; Password: string; Status: boolean; }
 
+/** Se busca por nombre, login y estado. */
+const coincide = (u: UserRow, consulta: string) =>
+  coincideTexto(consulta, [u.Usuario, u.Login, u.Status === 1 ? 'activo' : 'inactivo']);
+
 export default function UsuariosPage() {
   const [items, setItems] = useState<UserRow[]>([]);
+  const [busqueda, setBusqueda] = useState('');
   const [error, setError] = useState('');
   const [modal, setModal] = useState<{ id: number | null; form: Form } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -30,6 +37,8 @@ export default function UsuariosPage() {
   };
   const setField = <K extends keyof Form>(key: K, value: Form[K]) =>
     setModal((m) => (m ? { ...m, form: { ...m.form, [key]: value } } : m));
+
+  const visibles = useMemo(() => items.filter((u) => coincide(u, busqueda)), [items, busqueda]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,11 +71,22 @@ export default function UsuariosPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
 
+      <SearchBar
+        value={busqueda}
+        onChange={setBusqueda}
+        placeholder="Nombre, login o estado (activo, inactivo)"
+        total={items.length}
+        visibles={visibles.length}
+        nombre={['usuario', 'usuarios']}
+      />
+
       <div className="table-wrap">
         <table className="tbl">
           <thead><tr><th>Nombre</th><th>Login</th><th>Alta</th><th>Estado</th><th></th></tr></thead>
           <tbody>
-            {items.map((u) => (
+            {items.length === 0 && <tr><td colSpan={5} className="empty">No hay usuarios.</td></tr>}
+            {items.length > 0 && visibles.length === 0 && <SinCoincidencias consulta={busqueda} columnas={5} />}
+            {visibles.map((u) => (
               <tr key={u.IdUsuario}>
                 <td><strong>{u.Usuario}</strong></td>
                 <td className="mono">{u.Login}</td>

@@ -1,9 +1,11 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useLoad } from '@/lib/hooks';
 import { Copy, KeyRound, Pencil, Plus, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react';
 import Modal from '@/components/Modal';
+import SearchBar, { SinCoincidencias } from '@/components/SearchBar';
+import { coincideTexto } from '@/lib/buscar';
 import { api, fmtDate } from '@/lib/client';
 
 interface KeyRow {
@@ -23,6 +25,10 @@ type Credencial = 'key' | 'secreto';
 
 interface Form { Nombre: string; Status: boolean; }
 
+/** Se busca por aplicacion, prefijo de la key, cifrado y estado. */
+const coincide = (k: KeyRow, consulta: string) =>
+  coincideTexto(consulta, [k.Nombre, k.KeyPrefijo, k.TieneSecreto ? 'con secreto' : 'sin secreto', k.Status === 1 ? 'activa' : 'inactiva']);
+
 const WS_URL = 'http://localhost:3056';
 const COPIED_MS = 2000;
 
@@ -34,6 +40,7 @@ export default function KeysPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [copied, setCopied] = useState<Credencial | null>(null);
+  const [busqueda, setBusqueda] = useState('');
 
   const load = useCallback(async () => {
     const r = await api<KeyRow[]>('/api/keys');
@@ -49,6 +56,8 @@ export default function KeysPage() {
   };
   const setField = <K extends keyof Form>(key: K, value: Form[K]) =>
     setModal((m) => (m ? { ...m, form: { ...m.form, [key]: value } } : m));
+
+  const visibles = useMemo(() => items.filter((k) => coincide(k, busqueda)), [items, busqueda]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,6 +116,15 @@ export default function KeysPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
 
+      <SearchBar
+        value={busqueda}
+        onChange={setBusqueda}
+        placeholder="Aplicación, inicio de la key, cifrado (con secreto, sin secreto) o estado"
+        total={items.length}
+        visibles={visibles.length}
+        nombre={['key', 'keys']}
+      />
+
       <div className="table-wrap">
         <table className="tbl">
           <thead>
@@ -114,7 +132,8 @@ export default function KeysPage() {
           </thead>
           <tbody>
             {items.length === 0 && <tr><td colSpan={7} className="empty">No hay keys registradas.</td></tr>}
-            {items.map((k) => (
+            {items.length > 0 && visibles.length === 0 && <SinCoincidencias consulta={busqueda} columnas={7} />}
+            {visibles.map((k) => (
               <tr key={k.IdKey}>
                 <td><strong>{k.Nombre}</strong></td>
                 <td className="mono">{k.KeyPrefijo}…</td>

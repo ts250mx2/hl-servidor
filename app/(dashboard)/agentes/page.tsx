@@ -1,11 +1,13 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useLoad } from '@/lib/hooks';
 import { Bot, Check, Copy, Pencil, Plus, Trash2 } from 'lucide-react';
 import Modal from '@/components/Modal';
+import SearchBar, { SinCoincidencias } from '@/components/SearchBar';
 import SearchSelect from '@/components/SearchSelect';
 import { ProviderBadge } from '@/components/ProviderMark';
+import { coincideTexto } from '@/lib/buscar';
 import { api, fmtDate } from '@/lib/client';
 import { providerLabel } from '@/lib/providers';
 
@@ -49,6 +51,18 @@ function UuidCell({ uuid, full = false }: { uuid: string; full?: boolean }) {
   );
 }
 
+/** Palabras por las que tambien se encuentra el estado de un agente. */
+function textoEstado(a: Agente): string {
+  if (a.Status !== 1) return 'inactivo';
+  if (a.LlaveStatus !== 1) return 'llave inactiva';
+  if (a.FechaCaducidad && new Date(a.FechaCaducidad).getTime() < Date.now()) return 'llave caducada';
+  return 'activo';
+}
+
+/** Se busca por nombre, UUID, llave, proveedor, modelo y estado. */
+const coincide = (a: Agente, consulta: string) =>
+  coincideTexto(consulta, [a.Agente, a.Uuid, a.Llave, a.Proveedor, providerLabel(a.Proveedor), a.Modelo, textoEstado(a)]);
+
 function estado(a: Agente) {
   if (a.Status !== 1) return <span className="badge badge-off">Inactivo</span>;
   if (a.LlaveStatus !== 1) return <span className="badge badge-warn">Llave inactiva</span>;
@@ -65,6 +79,7 @@ export default function AgentesPage() {
   const [modal, setModal] = useState<{ id: number | null; uuid: string | null; form: Form } | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [busqueda, setBusqueda] = useState('');
 
   const load = useCallback(async () => {
     const [a, l] = await Promise.all([api<Agente[]>('/api/agentes'), api<LlaveOpt[]>('/api/llaves')]);
@@ -91,6 +106,8 @@ export default function AgentesPage() {
     sublabel: `${providerLabel(l.Proveedor)} · ${l.Modelo}`,
     keywords: `${l.Proveedor} ${l.Modelo}`,
   }));
+
+  const visibles = useMemo(() => items.filter((a) => coincide(a, busqueda)), [items, busqueda]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,6 +144,15 @@ export default function AgentesPage() {
       {error && <div className="alert alert-error">{error}</div>}
       {llaves.length === 0 && <div className="alert alert-warn">Primero registra al menos una llave de API para poder crear agentes.</div>}
 
+      <SearchBar
+        value={busqueda}
+        onChange={setBusqueda}
+        placeholder="Nombre, UUID, llave, proveedor, modelo o estado (activo, inactivo, llave caducada)"
+        total={items.length}
+        visibles={visibles.length}
+        nombre={['agente', 'agentes']}
+      />
+
       <div className="table-wrap">
         <table className="tbl">
           <thead>
@@ -134,7 +160,8 @@ export default function AgentesPage() {
           </thead>
           <tbody>
             {items.length === 0 && <tr><td colSpan={7} className="empty">No hay agentes. Crea el primero.</td></tr>}
-            {items.map((a) => (
+            {items.length > 0 && visibles.length === 0 && <SinCoincidencias consulta={busqueda} columnas={7} />}
+            {visibles.map((a) => (
               <tr key={a.IdAgente}>
                 <td><strong>{a.Agente}</strong></td>
                 <td><UuidCell uuid={a.Uuid} /></td>

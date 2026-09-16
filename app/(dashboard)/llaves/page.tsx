@@ -2,10 +2,12 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useLoad } from '@/lib/hooks';
-import { KeySquare, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { KeySquare, Pencil, Plus, Trash2 } from 'lucide-react';
 import Modal from '@/components/Modal';
+import SearchBar, { SinCoincidencias } from '@/components/SearchBar';
 import ProviderPicker from '@/components/ProviderPicker';
 import { ProviderBadge } from '@/components/ProviderMark';
+import { coincideTexto } from '@/lib/buscar';
 import { api, fmtDate, toInputDate } from '@/lib/client';
 import { MODEL_SUGGESTIONS, PROVIDERS, providerLabel, type ProviderId } from '@/lib/providers';
 
@@ -35,8 +37,6 @@ interface Form {
 
 const EMPTY: Form = { Llave: '', Proveedor: 'claude', Modelo: '', Secreto: '', FechaCaducidad: '', Status: true };
 
-const normalizar = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-
 /** Palabra por la que tambien se encuentra cada estado, para poder escribir "caducada" o "inactiva". */
 function textoEstado(l: Llave): string {
   if (l.Status !== 1) return 'inactiva';
@@ -44,11 +44,9 @@ function textoEstado(l: Llave): string {
   return 'activa';
 }
 
-/** Busqueda incremental: todas las palabras escritas deben aparecer en nombre, proveedor, modelo, mascara o estado. */
-function coincide(l: Llave, consulta: string): boolean {
-  const pajar = normalizar(`${l.Llave} ${l.Proveedor} ${providerLabel(l.Proveedor)} ${l.Modelo} ${l.LlaveMascara} ${textoEstado(l)}`);
-  return normalizar(consulta).split(/\s+/).filter(Boolean).every((palabra) => pajar.includes(palabra));
-}
+/** Se busca por nombre, proveedor, modelo, terminacion de la llave y estado. */
+const coincide = (l: Llave, consulta: string) =>
+  coincideTexto(consulta, [l.Llave, l.Proveedor, providerLabel(l.Proveedor), l.Modelo, l.LlaveMascara, textoEstado(l)]);
 
 function estado(l: Llave) {
   if (l.Status !== 1) return <span className="badge badge-off">Inactiva</span>;
@@ -132,31 +130,14 @@ export default function LlavesPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      <div className="card toolbar">
-        <div className="filters-row">
-          <div className="form-group" style={{ flex: '1 1 320px' }}>
-            <label>Buscar</label>
-            <div className="search-box">
-              <Search size={16} />
-              <input
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Nombre, proveedor, modelo, terminación de la llave o estado (activa, caducada, inactiva)"
-                autoComplete="off"
-              />
-              {busqueda && (
-                <button type="button" className="btn-icon" onClick={() => setBusqueda('')} aria-label="Limpiar búsqueda" title="Limpiar"><X size={15} /></button>
-              )}
-            </div>
-          </div>
-          <div className="form-group narrow">
-            <label>&nbsp;</label>
-            <span className="form-hint" style={{ minHeight: '2.4rem', display: 'inline-flex', alignItems: 'center' }}>
-              {busqueda.trim() ? `${visibles.length} de ${items.length}` : `${items.length} llave${items.length === 1 ? '' : 's'}`}
-            </span>
-          </div>
-        </div>
-      </div>
+      <SearchBar
+        value={busqueda}
+        onChange={setBusqueda}
+        placeholder="Nombre, proveedor, modelo, terminación de la llave o estado (activa, caducada, inactiva)"
+        total={items.length}
+        visibles={visibles.length}
+        nombre={['llave', 'llaves']}
+      />
 
       <div className="table-wrap">
         <table className="tbl">
@@ -167,9 +148,7 @@ export default function LlavesPage() {
           </thead>
           <tbody>
             {items.length === 0 && <tr><td colSpan={8} className="empty">No hay llaves. Crea la primera.</td></tr>}
-            {items.length > 0 && visibles.length === 0 && (
-              <tr><td colSpan={8} className="empty">Ninguna llave coincide con &ldquo;{busqueda.trim()}&rdquo;.</td></tr>
-            )}
+            {items.length > 0 && visibles.length === 0 && <SinCoincidencias consulta={busqueda} columnas={8} />}
             {visibles.map((l) => (
               <tr key={l.IdLlave}>
                 <td><strong>{l.Llave}</strong></td>

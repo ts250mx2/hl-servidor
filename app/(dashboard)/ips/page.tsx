@@ -1,18 +1,25 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useLoad } from '@/lib/hooks';
 import { Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import Modal from '@/components/Modal';
+import SearchBar, { SinCoincidencias } from '@/components/SearchBar';
+import { coincideTexto } from '@/lib/buscar';
 import { api, fmtDate } from '@/lib/client';
 
 interface IpRow { IdIP: number; IP: string; Descripcion: string | null; Status: number; FechaAlta: string; }
 interface Form { IP: string; Descripcion: string; Status: boolean; }
 
+/** Se busca por IP, descripcion y estado. */
+const coincide = (ip: IpRow, consulta: string) =>
+  coincideTexto(consulta, [ip.IP, ip.Descripcion, ip.Status === 1 ? 'activa' : 'inactiva']);
+
 const LOCAL_IPS = ['127.0.0.1', '::1'];
 
 export default function IpsPage() {
   const [items, setItems] = useState<IpRow[]>([]);
+  const [busqueda, setBusqueda] = useState('');
   const [error, setError] = useState('');
   const [modal, setModal] = useState<{ id: number | null; form: Form } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -32,6 +39,8 @@ export default function IpsPage() {
   };
   const setField = <K extends keyof Form>(key: K, value: Form[K]) =>
     setModal((m) => (m ? { ...m, form: { ...m.form, [key]: value } } : m));
+
+  const visibles = useMemo(() => items.filter((ip) => coincide(ip, busqueda)), [items, busqueda]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,12 +75,22 @@ export default function IpsPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
 
+      <SearchBar
+        value={busqueda}
+        onChange={setBusqueda}
+        placeholder="IP, descripción o estado (activa, inactiva)"
+        total={items.length}
+        visibles={visibles.length}
+        nombre={['IP', 'IPs']}
+      />
+
       <div className="table-wrap">
         <table className="tbl">
           <thead><tr><th>IP</th><th>Descripción</th><th>Alta</th><th>Estado</th><th></th></tr></thead>
           <tbody>
             {items.length === 0 && <tr><td colSpan={5} className="empty">No hay IPs registradas. El webservice rechazará todo.</td></tr>}
-            {items.map((ip) => (
+            {items.length > 0 && visibles.length === 0 && <SinCoincidencias consulta={busqueda} columnas={5} />}
+            {visibles.map((ip) => (
               <tr key={ip.IdIP}>
                 <td className="mono"><strong>{ip.IP}</strong></td>
                 <td>{ip.Descripcion || '—'}</td>
