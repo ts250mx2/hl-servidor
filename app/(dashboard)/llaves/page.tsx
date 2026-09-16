@@ -1,13 +1,13 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useLoad } from '@/lib/hooks';
-import { KeySquare, Pencil, Plus, Trash2 } from 'lucide-react';
+import { KeySquare, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import Modal from '@/components/Modal';
 import ProviderPicker from '@/components/ProviderPicker';
 import { ProviderBadge } from '@/components/ProviderMark';
 import { api, fmtDate, toInputDate } from '@/lib/client';
-import { MODEL_SUGGESTIONS, PROVIDERS, type ProviderId } from '@/lib/providers';
+import { MODEL_SUGGESTIONS, PROVIDERS, providerLabel, type ProviderId } from '@/lib/providers';
 
 /** Sugerencias de modelo solo del proveedor elegido; "otro" no tiene. */
 const suggestionsFor = (provider: ProviderId) => MODEL_SUGGESTIONS.filter((g) => g.provider === provider);
@@ -35,6 +35,21 @@ interface Form {
 
 const EMPTY: Form = { Llave: '', Proveedor: 'claude', Modelo: '', Secreto: '', FechaCaducidad: '', Status: true };
 
+const normalizar = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/** Palabra por la que tambien se encuentra cada estado, para poder escribir "caducada" o "inactiva". */
+function textoEstado(l: Llave): string {
+  if (l.Status !== 1) return 'inactiva';
+  if (l.FechaCaducidad && new Date(l.FechaCaducidad).getTime() < Date.now()) return 'caducada';
+  return 'activa';
+}
+
+/** Busqueda incremental: todas las palabras escritas deben aparecer en nombre, proveedor, modelo, mascara o estado. */
+function coincide(l: Llave, consulta: string): boolean {
+  const pajar = normalizar(`${l.Llave} ${l.Proveedor} ${providerLabel(l.Proveedor)} ${l.Modelo} ${l.LlaveMascara} ${textoEstado(l)}`);
+  return normalizar(consulta).split(/\s+/).filter(Boolean).every((palabra) => pajar.includes(palabra));
+}
+
 function estado(l: Llave) {
   if (l.Status !== 1) return <span className="badge badge-off">Inactiva</span>;
   if (l.FechaCaducidad && new Date(l.FechaCaducidad).getTime() < Date.now()) {
@@ -49,6 +64,7 @@ export default function LlavesPage() {
   const [modal, setModal] = useState<{ id: number | null; form: Form } | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [busqueda, setBusqueda] = useState('');
 
   const load = useCallback(async () => {
     const r = await api<Llave[]>('/api/llaves');
@@ -98,6 +114,8 @@ export default function LlavesPage() {
     else alert(r.error || 'No se pudo eliminar');
   };
 
+  const visibles = useMemo(() => (busqueda.trim() ? items.filter((l) => coincide(l, busqueda)) : items), [items, busqueda]);
+
   /** Al elegir una sugerencia se llena el modelo y se ajusta el proveedor al que corresponde. */
   const pickModel = (provider: ProviderId, model: string) =>
     setModal((m) => (m ? { ...m, form: { ...m.form, Proveedor: provider, Modelo: model } } : m));
@@ -114,6 +132,32 @@ export default function LlavesPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
 
+      <div className="card toolbar">
+        <div className="filters-row">
+          <div className="form-group" style={{ flex: '1 1 320px' }}>
+            <label>Buscar</label>
+            <div className="search-box">
+              <Search size={16} />
+              <input
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Nombre, proveedor, modelo, terminación de la llave o estado (activa, caducada, inactiva)"
+                autoComplete="off"
+              />
+              {busqueda && (
+                <button type="button" className="btn-icon" onClick={() => setBusqueda('')} aria-label="Limpiar búsqueda" title="Limpiar"><X size={15} /></button>
+              )}
+            </div>
+          </div>
+          <div className="form-group narrow">
+            <label>&nbsp;</label>
+            <span className="form-hint" style={{ minHeight: '2.4rem', display: 'inline-flex', alignItems: 'center' }}>
+              {busqueda.trim() ? `${visibles.length} de ${items.length}` : `${items.length} llave${items.length === 1 ? '' : 's'}`}
+            </span>
+          </div>
+        </div>
+      </div>
+
       <div className="table-wrap">
         <table className="tbl">
           <thead>
@@ -123,7 +167,10 @@ export default function LlavesPage() {
           </thead>
           <tbody>
             {items.length === 0 && <tr><td colSpan={8} className="empty">No hay llaves. Crea la primera.</td></tr>}
-            {items.map((l) => (
+            {items.length > 0 && visibles.length === 0 && (
+              <tr><td colSpan={8} className="empty">Ninguna llave coincide con &ldquo;{busqueda.trim()}&rdquo;.</td></tr>
+            )}
+            {visibles.map((l) => (
               <tr key={l.IdLlave}>
                 <td><strong>{l.Llave}</strong></td>
                 <td><ProviderBadge id={l.Proveedor} short /></td>
