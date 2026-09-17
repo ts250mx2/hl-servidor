@@ -12,3 +12,6 @@ npm-debug.log*
 !.env.example
 *.tsbuildinfo
 next-env.d.ts
+
+# respaldos de la base (npm run db:respaldar)
+/respaldos/

@@ -3,6 +3,7 @@ import { cleanText, fail, ok, parseDateOrNull, parseStatus, withAuth } from '@/l
 import { encryptSecret } from '@/lib/crypto';
 import { isProvider } from '@/lib/providers';
 import { LLAVES_LIST_SQL, toPublicLlave, type LlaveRow } from '@/lib/llaves';
+import { fechaTexto, registrarAuditoria } from '@/lib/auditoria';
 
 export async function GET() {
   return withAuth(async () => {
@@ -12,7 +13,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  return withAuth(async () => {
+  return withAuth(async (user) => {
     const body = await request.json().catch(() => ({}));
     const nombre = cleanText(body.Llave, 45);
     const proveedor = cleanText(body.Proveedor, 30);
@@ -30,6 +31,10 @@ export async function POST(request: Request) {
       [nombre, proveedor, modelo, encryptSecret(secreto), fechaCaducidad, parseStatus(body.Status)]
     );
     const insertId = (result as { insertId: number }).insertId;
+    await registrarAuditoria({
+      user, request, accion: 'CREAR', entidad: 'llave', idEntidad: insertId, nombre,
+      despues: { Llave: nombre, Proveedor: proveedor, Modelo: modelo, FechaCaducidad: fechaTexto(fechaCaducidad), Status: parseStatus(body.Status) },
+    });
     return ok({ IdLlave: insertId }, 201);
   });
 }

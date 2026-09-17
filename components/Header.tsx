@@ -21,6 +21,7 @@ const TITLES: Record<string, string> = {
   '/usuarios': 'Usuarios',
   '/bitacora': 'Bitácora',
   '/estadisticas': 'Estadísticas',
+  '/auditoria': 'Auditoría',
 };
 
 function initials(name: string): string {

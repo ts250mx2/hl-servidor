@@ -179,3 +179,28 @@ app/api/ws/llave          webservice
 app/api/{llaves,agentes,keys,ips,usuarios,bitacora,dashboard}
 app/(dashboard)/*         páginas del portal
 ```
+
+## Respaldo y recuperación
+
+Dos cosas hay que poder recuperar: la **base de datos** y la **MASTER_KEY**. El respaldo de la base no sirve sin la MASTER_KEY con la que se cifraron las llaves de API.
+
+- **MASTER_KEY.** Guárdala fuera del servidor (gestor de contraseñas). `npm run db:verificar` imprime una huella de la llave (no la llave) y comprueba que descifra todas las llaves y secretos de la base; úsalo después de restaurar o de mover el servidor. El resumen del portal también avisa si alguna llave dejó de descifrarse.
+- **Base de datos.** `npm run db:respaldar` vuelca esquema y datos a `respaldos/BDHLServer-AAAAMMDD-HHMMSS.sql.gz` sin depender de `mysqldump` y borra los respaldos con más de `RESPALDOS_DIAS` días (14 por defecto). Prográmalo a diario:
+
+```
+# Linux con PM2
+pm2 start npm --name hl-respaldo --cron "0 3 * * *" --no-autorestart -- run db:respaldar
+# Windows: Programador de tareas -> "npm run db:respaldar" en la carpeta del proyecto
+```
+
+Restaurar: `zcat respaldos/BDHLServer-....sql.gz | mysql -u usuario -p` (el archivo trae `USE` y `DROP/CREATE` de cada tabla), y luego `npm run db:verificar`.
+
+## Auditoría del portal
+
+Cada alta, cambio o baja de llaves, agentes, keys, IPs y usuarios queda en `tblAuditoria` con quién lo hizo, desde qué IP y qué campos cambiaron (valor anterior y nuevo). También los inicios de sesión y los intentos fallidos. Nunca se guardan secretos: de una llave de API o una contraseña solo queda "reemplazada". Se consulta en **Monitoreo → Auditoría**. Migración para bases previas: `db/migracion-auditoria.sql`.
+
+## Llave de respaldo por agente
+
+En el agente se puede elegir una **llave de respaldo**. Si el proveedor de la llave principal responde 401/402/403 (llave revocada o sin saldo), 408/429 (timeout, saturado) o 5xx (caído), el proxy repite la llamada con la llave de respaldo antes de contestarle a la app, y lo anota en la bitácora (el primer intento como `ERROR`, el segundo con `· respaldo "nombre"`). La respuesta lleva `X-HL-Respaldo: 1` y los headers `X-HL-Proveedor` / `X-HL-Modelo` de la llave que atendió.
+
+Por proxy solo aplica si el respaldo habla el **mismo API** que la principal (Claude con Claude; OpenAI con OpenAI, DeepSeek, Groq, Mistral...), porque la app ya mandó la llamada en el formato de ese SDK. Conviene que sea otra cuenta u otro proveedor compatible. En modo llave, `/api/ws/llave` regresa también `respaldo` (proveedor, api, modelo y llave) para que la app reintente por su cuenta (`cliente/hl-cliente.ts` lo expone en `respaldo`). Migración: `db/migracion-agente-respaldo.sql`.

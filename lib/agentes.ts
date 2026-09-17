@@ -6,6 +6,7 @@ export interface AgenteRow {
   Uuid: string;
   Agente: string;
   IdLlave: number;
+  IdLlaveRespaldo: number | null;
   Status: number;
   FechaAlta: Date;
   FechaModificacion: Date;
@@ -14,13 +15,18 @@ export interface AgenteRow {
   Modelo: string;
   LlaveStatus: number;
   FechaCaducidad: Date | null;
+  LlaveRespaldo: string | null;
+  ProveedorRespaldo: string | null;
+  ModeloRespaldo: string | null;
 }
 
 export const AGENTES_LIST_SQL = `
-  SELECT a.IdAgente, a.Uuid, a.Agente, a.IdLlave, a.Status, a.FechaAlta, a.FechaModificacion,
-         l.Llave, l.Proveedor, l.Modelo, l.Status AS LlaveStatus, l.FechaCaducidad
+  SELECT a.IdAgente, a.Uuid, a.Agente, a.IdLlave, a.IdLlaveRespaldo, a.Status, a.FechaAlta, a.FechaModificacion,
+         l.Llave, l.Proveedor, l.Modelo, l.Status AS LlaveStatus, l.FechaCaducidad,
+         r.Llave AS LlaveRespaldo, r.Proveedor AS ProveedorRespaldo, r.Modelo AS ModeloRespaldo
   FROM tblAgentes a
-  INNER JOIN tblLlaves l ON l.IdLlave = a.IdLlave`;
+  INNER JOIN tblLlaves l ON l.IdLlave = a.IdLlave
+  LEFT JOIN tblLlaves r ON r.IdLlave = a.IdLlaveRespaldo`;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

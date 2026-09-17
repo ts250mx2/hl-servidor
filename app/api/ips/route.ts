@@ -1,6 +1,7 @@
 import pool from '@/lib/db';
 import { cleanText, fail, ok, parseStatus, withAuth } from '@/lib/api';
 import { isValidIp, normalizeIp } from '@/lib/ip';
+import { registrarAuditoria } from '@/lib/auditoria';
 
 export async function GET() {
   return withAuth(async () => {
@@ -12,7 +13,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  return withAuth(async () => {
+  return withAuth(async (user) => {
     const body = await request.json().catch(() => ({}));
     const ip = normalizeIp(cleanText(body.IP, 45));
     const descripcion = cleanText(body.Descripcion, 100);
@@ -26,6 +27,7 @@ export async function POST(request: Request) {
       [ip, descripcion || null, parseStatus(body.Status)]
     );
     const insertId = (result as { insertId: number }).insertId;
+    await registrarAuditoria({ user, request, accion: 'CREAR', entidad: 'ip', idEntidad: insertId, nombre: ip, despues: { IP: ip, Descripcion: descripcion || null, Status: parseStatus(body.Status) } });
     return ok({ IdIP: insertId }, 201);
   });
 }

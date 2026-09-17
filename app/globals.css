@@ -281,6 +281,15 @@ tr:hover .td-actions { opacity: 1; }
 .ss-item.ss-disabled { opacity: 0.5; cursor: not-allowed; }
 .ss-empty { padding: 0.6rem 0.7rem; font-size: 0.82rem; color: var(--text-muted); }
 
+/* ─── AUDITORÍA Y RESPALDO ─── */
+.audit-cambios { list-style: none; display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.82rem; }
+.audit-cambios li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem; }
+.audit-campo { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); min-width: 5.5rem; }
+.audit-antes { color: var(--text-muted); text-decoration: line-through; text-decoration-color: rgba(239,68,68,0.5); }
+.audit-flecha { color: var(--text-faint); }
+.audit-despues { font-weight: 600; }
+.respaldo-tag { font-family: var(--font-mono); font-size: 0.68rem; color: var(--text-muted); margin-top: 0.15rem; }
+
 /* ─── CHIPS DE SUGERENCIA ─── */
 .chip-groups { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem; }
 .chip-group { display: flex; flex-direction: column; gap: 0.3rem; }

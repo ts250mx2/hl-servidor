@@ -24,6 +24,8 @@ interface Stats {
   consultas24h: number;
   rechazos24h: number;
   consultas7d: number;
+  agentesSinRespaldo: number;
+  llavesNoDescifrables: number;
   diasAviso: number;
   diasTendencia: number;
   ultimos: { Fecha: string; IP: string; KeyPrefijo: string | null; Aplicacion: string | null; Proveedor: string | null; Modelo: string | null; Resultado: string; Agente: string | null }[];
@@ -182,6 +184,16 @@ export default function DashboardPage() {
               <span className="h-icon">{stats.rechazos24h ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}</span>
               <span className="h-text">Rechazos en 24 h</span>
               <span className="h-val">{stats.rechazos24h}</span>
+            </div>
+            <div className={`health-row ${stats.agentesSinRespaldo ? 'warn' : 'ok'}`}>
+              <span className="h-icon">{stats.agentesSinRespaldo ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}</span>
+              <span className="h-text">Agentes activos sin llave de respaldo</span>
+              <span className="h-val">{stats.agentesSinRespaldo}</span>
+            </div>
+            <div className={`health-row ${stats.llavesNoDescifrables ? 'bad' : 'ok'}`}>
+              <span className="h-icon">{stats.llavesNoDescifrables ? <XCircle size={18} /> : <CheckCircle2 size={18} />}</span>
+              <span className="h-text">Llaves que no se descifran con MASTER_KEY</span>
+              <span className="h-val">{stats.llavesNoDescifrables}</span>
             </div>
           </div>
 

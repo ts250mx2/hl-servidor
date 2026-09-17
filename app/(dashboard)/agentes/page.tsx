@@ -9,13 +9,14 @@ import SearchSelect from '@/components/SearchSelect';
 import { ProviderBadge } from '@/components/ProviderMark';
 import { coincideTexto } from '@/lib/buscar';
 import { api, fmtDate } from '@/lib/client';
-import { providerLabel } from '@/lib/providers';
+import { providerApi, providerLabel } from '@/lib/providers';
 
 interface Agente {
   IdAgente: number;
   Uuid: string;
   Agente: string;
   IdLlave: number;
+  IdLlaveRespaldo: number | null;
   Status: number;
   FechaModificacion: string;
   Llave: string;
@@ -23,10 +24,13 @@ interface Agente {
   Modelo: string;
   LlaveStatus: number;
   FechaCaducidad: string | null;
+  LlaveRespaldo: string | null;
+  ProveedorRespaldo: string | null;
+  ModeloRespaldo: string | null;
 }
 
 interface LlaveOpt { IdLlave: number; Llave: string; Proveedor: string; Modelo: string; Status: number; }
-interface Form { Agente: string; IdLlave: number; Status: boolean; }
+interface Form { Agente: string; IdLlave: number; IdLlaveRespaldo: number; Status: boolean; }
 
 const COPIED_MS = 1800;
 
@@ -61,7 +65,7 @@ function textoEstado(a: Agente): string {
 
 /** Se busca por nombre, UUID, llave, proveedor, modelo y estado. */
 const coincide = (a: Agente, consulta: string) =>
-  coincideTexto(consulta, [a.Agente, a.Uuid, a.Llave, a.Proveedor, providerLabel(a.Proveedor), a.Modelo, textoEstado(a)]);
+  coincideTexto(consulta, [a.Agente, a.Uuid, a.Llave, a.Proveedor, providerLabel(a.Proveedor), a.Modelo, a.LlaveRespaldo, a.ModeloRespaldo, textoEstado(a)]);
 
 function estado(a: Agente) {
   if (a.Status !== 1) return <span className="badge badge-off">Inactivo</span>;
@@ -91,11 +95,11 @@ export default function AgentesPage() {
 
   const openNew = () => {
     setFormError('');
-    setModal({ id: null, uuid: null, form: { Agente: '', IdLlave: 0, Status: true } });
+    setModal({ id: null, uuid: null, form: { Agente: '', IdLlave: 0, IdLlaveRespaldo: 0, Status: true } });
   };
   const openEdit = (a: Agente) => {
     setFormError('');
-    setModal({ id: a.IdAgente, uuid: a.Uuid, form: { Agente: a.Agente, IdLlave: a.IdLlave, Status: a.Status === 1 } });
+    setModal({ id: a.IdAgente, uuid: a.Uuid, form: { Agente: a.Agente, IdLlave: a.IdLlave, IdLlaveRespaldo: a.IdLlaveRespaldo ?? 0, Status: a.Status === 1 } });
   };
   const setField = <K extends keyof Form>(key: K, value: Form[K]) =>
     setModal((m) => (m ? { ...m, form: { ...m.form, [key]: value } } : m));
@@ -109,13 +113,19 @@ export default function AgentesPage() {
 
   const visibles = useMemo(() => items.filter((a) => coincide(a, busqueda)), [items, busqueda]);
 
+  /* El respaldo solo sirve por proxy si habla el mismo API que la principal; se avisa, no se impide. */
+  const llaveDe = (id: number) => llaves.find((l) => l.IdLlave === id);
+  const apiPrincipal = modal ? providerApi(llaveDe(modal.form.IdLlave)?.Proveedor ?? '') : null;
+  const apiRespaldo = modal && modal.form.IdLlaveRespaldo ? providerApi(llaveDe(modal.form.IdLlaveRespaldo)?.Proveedor ?? '') : null;
+  const respaldoDistintoApi = Boolean(apiPrincipal && apiRespaldo && apiPrincipal !== apiRespaldo);
+
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!modal) return;
     if (!modal.form.IdLlave) { setFormError('Selecciona la llave que ejecutará este agente'); return; }
     setSaving(true);
     setFormError('');
-    const payload = { ...modal.form, Status: modal.form.Status ? 1 : 0 };
+    const payload = { ...modal.form, IdLlaveRespaldo: modal.form.IdLlaveRespaldo || null, Status: modal.form.Status ? 1 : 0 };
     const r = modal.id
       ? await api(`/api/agentes/${modal.id}`, { method: 'PUT', body: JSON.stringify(payload) })
       : await api('/api/agentes', { method: 'POST', body: JSON.stringify(payload) });
@@ -165,7 +175,10 @@ export default function AgentesPage() {
               <tr key={a.IdAgente}>
                 <td><strong>{a.Agente}</strong></td>
                 <td><UuidCell uuid={a.Uuid} /></td>
-                <td>{a.Llave}</td>
+                <td>
+                  {a.Llave}
+                  {a.LlaveRespaldo && <div className="respaldo-tag" title={`Si la principal falla, el proxy reintenta con ${a.LlaveRespaldo} (${a.ModeloRespaldo})`}>↻ respaldo: {a.LlaveRespaldo}</div>}
+                </td>
                 <td><span className="pbadge"><ProviderBadge id={a.Proveedor} short /><code style={{ color: 'var(--text-muted)' }}>{a.Modelo}</code></span></td>
                 <td>{fmtDate(a.FechaModificacion)}</td>
                 <td>{estado(a)}</td>
@@ -208,6 +221,21 @@ export default function AgentesPage() {
                   emptyText="Ninguna llave coincide"
                 />
                 <span className="form-hint">Busca por nombre, proveedor o modelo. Para cambiar de modelo o de IA en las apps que usan este agente, basta con reasignar aquí la llave.</span>
+              </div>
+              <div className="form-group full">
+                <label>Llave de respaldo (opcional)</label>
+                <SearchSelect
+                  options={llaveOptions.filter((o) => o.value !== modal.form.IdLlave)}
+                  value={modal.form.IdLlaveRespaldo}
+                  onChange={(v) => setField('IdLlaveRespaldo', v)}
+                  placeholder="Sin respaldo. Escribe para elegir una llave"
+                  emptyText="Ninguna llave coincide"
+                />
+                {respaldoDistintoApi ? (
+                  <span className="form-hint" style={{ color: 'var(--warning)' }}>Esta llave habla otro API que la principal: por proxy no se puede reintentar con ella (la app ya mandó la llamada en el formato del otro SDK). Solo sirve a las apps en modo llave.</span>
+                ) : (
+                  <span className="form-hint">Si el proveedor rechaza la principal (sin saldo, llave revocada, saturado o caído), el proxy repite la llamada con esta llave antes de contestarle a la app. Conviene que sea de otra cuenta u otro proveedor con el mismo API.</span>
+                )}
               </div>
               <div className="form-group">
                 <label>Estado</label>

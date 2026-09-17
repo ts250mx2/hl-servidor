@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { decryptSecret, encryptWithKey } from './crypto';
 import { providerApi } from './providers';
-import { autenticarWs, denyWs, errorDetalle, logWs, touchKey } from './ws-auth';
+import { autenticarWs, denyWs, errorDetalle, llaveRespaldoUtilizable, logWs, touchKey } from './ws-auth';
 
 export { KEY_HEADER, AGENTE_HEADER } from './ws-auth';
 
@@ -36,6 +36,18 @@ export async function resolveLlave(request: Request, uuidFromPath?: string): Pro
   try {
     const llave = decryptSecret(agente.LlaveEncriptada);
     const entrega = empaquetarLlave(llave, key.SecretoCifrado);
+    /* Llave de respaldo (si el agente la tiene activa): la app puede reintentar con ella si el proveedor falla. */
+    const respaldo = llaveRespaldoUtilizable(agente);
+    const entregaRespaldo = respaldo
+      ? {
+          nombre: respaldo.Llave,
+          proveedor: respaldo.Proveedor,
+          api: providerApi(respaldo.Proveedor),
+          modelo: respaldo.Modelo,
+          ...empaquetarLlave(decryptSecret(respaldo.LlaveEncriptada), key.SecretoCifrado),
+          caducidad: respaldo.FechaCaducidad,
+        }
+      : null;
     await touchKey(key.IdKey);
     await logWs(ip, prefijo, key, agente, 'OK', `App: ${key.Nombre}${entrega.cifrado ? '' : ' (llave sin cifrar: key sin secreto)'}`);
 
@@ -51,6 +63,7 @@ export async function resolveLlave(request: Request, uuidFromPath?: string): Pro
           modelo: agente.Modelo,
           ...entrega,
           caducidad: agente.FechaCaducidad,
+          respaldo: entregaRespaldo,
         },
         error: null,
       },

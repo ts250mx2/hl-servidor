@@ -1,5 +1,6 @@
 import pool from '@/lib/db';
 import { ok, withAuth } from '@/lib/api';
+import { decryptSecret } from '@/lib/crypto';
 
 const DAYS_WARNING = 15;
 const TREND_DAYS = 7;
@@ -25,7 +26,8 @@ export async function GET() {
         (SELECT COUNT(*) FROM tblIPsPermitidas WHERE Status = 1) AS ipsActivas,
         (SELECT COUNT(*) FROM tblBitacora WHERE Fecha >= DATE_SUB(NOW(), INTERVAL 1 DAY)) AS consultas24h,
         (SELECT COUNT(*) FROM tblBitacora WHERE Fecha >= DATE_SUB(NOW(), INTERVAL 1 DAY) AND Resultado <> 'OK') AS rechazos24h,
-        (SELECT COUNT(*) FROM tblBitacora WHERE Fecha >= DATE_SUB(NOW(), INTERVAL ? DAY)) AS consultas7d
+        (SELECT COUNT(*) FROM tblBitacora WHERE Fecha >= DATE_SUB(NOW(), INTERVAL ? DAY)) AS consultas7d,
+        (SELECT COUNT(*) FROM tblAgentes WHERE Status = 1 AND IdLlaveRespaldo IS NULL) AS agentesSinRespaldo
     `, [DAYS_WARNING, TREND_DAYS]);
 
     const [ultimos] = await pool.query(`
@@ -33,6 +35,12 @@ export async function GET() {
       FROM tblBitacora b LEFT JOIN tblAgentes a ON a.IdAgente = b.IdAgente
       ORDER BY b.IdBitacora DESC LIMIT ?
     `, [LAST_CALLS]);
+
+    /* Llaves que ya no se descifran: senal de que MASTER_KEY cambio o se restauro mal. */
+    const [cifradas] = await pool.query('SELECT LlaveEncriptada FROM tblLlaves');
+    const llavesNoDescifrables = (cifradas as { LlaveEncriptada: string }[]).filter((l) => {
+      try { decryptSecret(l.LlaveEncriptada); return false; } catch { return true; }
+    }).length;
 
     /* Llamadas por proveedor en los ultimos dias (para la dona y el ranking). */
     const [porProveedor] = await pool.query(`
@@ -64,6 +72,7 @@ export async function GET() {
       ultimos,
       diasAviso: DAYS_WARNING,
       diasTendencia: TREND_DAYS,
+      llavesNoDescifrables,
       porProveedor: (porProveedor as ProviderRow[]).map((r) => ({ proveedor: r.Proveedor, total: Number(r.total), ok: Number(r.ok) })),
       catalogo: (catalogo as LlaveProviderRow[]).map((r) => ({ proveedor: r.Proveedor, llaves: Number(r.llaves), agentes: Number(r.agentes) })),
       tendencia: (tendencia as DayRow[]).map((r) => ({ dia: r.dia, total: Number(r.total) })),

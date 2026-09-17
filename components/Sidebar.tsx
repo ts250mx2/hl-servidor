@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, Bot, KeyRound, KeySquare, LayoutDashboard, ScrollText, ShieldCheck, Users } from 'lucide-react';
+import { BarChart3, Bot, History, KeyRound, KeySquare, LayoutDashboard, ScrollText, ShieldCheck, Users } from 'lucide-react';
 import { useSidebar } from './SidebarContext';
 import styles from './Sidebar.module.css';
 
@@ -28,6 +28,7 @@ const GROUPS = [
     links: [
       { href: '/bitacora', label: 'Bitácora', icon: ScrollText },
       { href: '/estadisticas', label: 'Estadísticas', icon: BarChart3 },
+      { href: '/auditoria', label: 'Auditoría', icon: History },
     ],
   },
 ];

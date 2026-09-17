@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import pool from '@/lib/db';
 import { cleanText, fail, ok, parseStatus, withAuth } from '@/lib/api';
+import { registrarAuditoria } from '@/lib/auditoria';
 
 const BCRYPT_ROUNDS = 10;
 const MIN_PASSWORD_LENGTH = 8;
@@ -15,7 +16,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  return withAuth(async () => {
+  return withAuth(async (user) => {
     const body = await request.json().catch(() => ({}));
     const usuario = cleanText(body.Usuario, 80);
     const login = cleanText(body.Login, 45);
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
       [usuario, login, hash, parseStatus(body.Status)]
     );
     const insertId = (result as { insertId: number }).insertId;
+    await registrarAuditoria({ user, request, accion: 'CREAR', entidad: 'usuario', idEntidad: insertId, nombre: usuario, despues: { Usuario: usuario, Login: login, Status: parseStatus(body.Status) } });
     return ok({ IdUsuario: insertId }, 201);
   });
 }

@@ -44,6 +44,37 @@ export interface AgenteWsRow {
   LlaveEncriptada: string;
   FechaCaducidad: Date | null;
   LlaveStatus: number;
+  /* Llave de respaldo del agente (LEFT JOIN): nulos si no tiene. */
+  RespaldoIdLlave: number | null;
+  RespaldoLlave: string | null;
+  RespaldoProveedor: string | null;
+  RespaldoModelo: string | null;
+  RespaldoLlaveEncriptada: string | null;
+  RespaldoFechaCaducidad: Date | null;
+  RespaldoStatus: number | null;
+}
+
+export interface LlaveRespaldo {
+  IdLlave: number;
+  Llave: string;
+  Proveedor: string;
+  Modelo: string;
+  LlaveEncriptada: string;
+  FechaCaducidad: Date | null;
+}
+
+/** La llave de respaldo del agente si existe, esta activa y no ha caducado. */
+export function llaveRespaldoUtilizable(a: AgenteWsRow): LlaveRespaldo | null {
+  if (!a.RespaldoIdLlave || !a.RespaldoLlave || !a.RespaldoProveedor || !a.RespaldoModelo || !a.RespaldoLlaveEncriptada) return null;
+  if (a.RespaldoStatus !== 1 || isExpired(a.RespaldoFechaCaducidad)) return null;
+  return {
+    IdLlave: a.RespaldoIdLlave,
+    Llave: a.RespaldoLlave,
+    Proveedor: a.RespaldoProveedor,
+    Modelo: a.RespaldoModelo,
+    LlaveEncriptada: a.RespaldoLlaveEncriptada,
+    FechaCaducidad: a.RespaldoFechaCaducidad,
+  };
 }
 
 export interface WsContext {
@@ -111,9 +142,12 @@ async function findKey(rawKey: string): Promise<KeyRow | undefined> {
 async function findAgenteByUuid(uuid: string): Promise<AgenteWsRow | undefined> {
   const [rows] = await pool.query(
     `SELECT a.IdAgente, a.Uuid, a.Agente, a.Status AS AgenteStatus,
-            l.Llave, l.Proveedor, l.Modelo, l.LlaveEncriptada, l.FechaCaducidad, l.Status AS LlaveStatus
+            l.Llave, l.Proveedor, l.Modelo, l.LlaveEncriptada, l.FechaCaducidad, l.Status AS LlaveStatus,
+            r.IdLlave AS RespaldoIdLlave, r.Llave AS RespaldoLlave, r.Proveedor AS RespaldoProveedor, r.Modelo AS RespaldoModelo,
+            r.LlaveEncriptada AS RespaldoLlaveEncriptada, r.FechaCaducidad AS RespaldoFechaCaducidad, r.Status AS RespaldoStatus
      FROM tblAgentes a
      INNER JOIN tblLlaves l ON l.IdLlave = a.IdLlave
+     LEFT JOIN tblLlaves r ON r.IdLlave = a.IdLlaveRespaldo
      WHERE a.Uuid = ?
      LIMIT 1`,
     [uuid]

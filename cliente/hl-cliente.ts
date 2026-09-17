@@ -31,6 +31,17 @@ export interface LlaveIA {
   /** Llave de API ya descifrada, lista para el SDK del proveedor. */
   llave: string;
   caducidad: string | null;
+  /** Llave de respaldo del agente (si la tiene): con ella se reintenta si el proveedor falla. */
+  respaldo: RespaldoIA | null;
+}
+
+export interface RespaldoIA {
+  nombre: string;
+  proveedor: string;
+  api: ApiIA | null;
+  modelo: string;
+  llave: string;
+  caducidad: string | null;
 }
 
 export interface HlClienteConfig {
@@ -57,6 +68,16 @@ interface RespuestaWs {
     llaveCifrada: string | null;
     cifrado: 'aes-256-gcm' | null;
     caducidad: string | null;
+    respaldo?: {
+      nombre: string;
+      proveedor: string;
+      api?: ApiIA | null;
+      modelo: string;
+      llave: string | null;
+      llaveCifrada: string | null;
+      cifrado: 'aes-256-gcm' | null;
+      caducidad: string | null;
+    } | null;
   } | null;
   error: string | null;
 }
@@ -127,7 +148,14 @@ function descifrarLlave(payload: string, secreto: Buffer): string {
   }
 }
 
-function extraerLlave(data: NonNullable<RespuestaWs['data']>, config: HlClienteConfig): string {
+/** Como viaja una llave en la respuesta: en claro o cifrada con el secreto compartido. */
+interface EntregaWs {
+  llave: string | null;
+  llaveCifrada: string | null;
+  cifrado: 'aes-256-gcm' | null;
+}
+
+function extraerLlave(data: EntregaWs, config: HlClienteConfig): string {
   if (data.llaveCifrada) {
     if (!config.secreto) {
       throw new HlClienteError('HL Console regreso la llave cifrada pero falta HL_SECRET en el entorno');
@@ -164,8 +192,12 @@ async function consultarWs(config: HlClienteConfig): Promise<LlaveIA> {
   }
 
   const { uuid, agente, proveedor, modelo, caducidad } = body.data;
-  const api = body.data.api === 'anthropic' || body.data.api === 'openai' || body.data.api === 'gemini' ? body.data.api : null;
-  return { uuid, agente, proveedor, api, modelo, caducidad, llave: extraerLlave(body.data, config) };
+  const leerApi = (v: unknown): ApiIA | null => (v === 'anthropic' || v === 'openai' || v === 'gemini' ? v : null);
+  const r = body.data.respaldo;
+  const respaldo: RespaldoIA | null = r
+    ? { nombre: r.nombre, proveedor: r.proveedor, api: leerApi(r.api), modelo: r.modelo, caducidad: r.caducidad, llave: extraerLlave(r, config) }
+    : null;
+  return { uuid, agente, proveedor, api: leerApi(body.data.api), modelo, caducidad, llave: extraerLlave(body.data, config), respaldo };
 }
 
 interface CacheEntry {

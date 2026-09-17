@@ -5,6 +5,7 @@ import { createSessionCookie } from '@/lib/session';
 import { cleanText, fail } from '@/lib/api';
 import { getClientIp } from '@/lib/ip';
 import { RATE_LIMIT_MINUTES, clearFailures, isRateLimited, registerFailure } from '@/lib/rate-limit';
+import { registrarAuditoria } from '@/lib/auditoria';
 
 interface UserRow {
   IdUsuario: number;
@@ -36,11 +37,13 @@ export async function POST(request: Request) {
     const valid = await bcrypt.compare(password, user?.Password ?? DUMMY_HASH);
     if (!user || !valid) {
       registerFailure(limitKey);
+      await registrarAuditoria({ user: null, request, accion: 'LOGIN_FALLIDO', entidad: 'sesion', nombre: username, detalle: user ? 'Contraseña incorrecta' : 'Login inexistente o inactivo' });
       return fail('Credenciales invalidas', 401);
     }
 
     clearFailures(limitKey);
     const sessionUser = { IdUsuario: user.IdUsuario, Usuario: user.Usuario, Login: user.Login };
+    await registrarAuditoria({ user: sessionUser, request, accion: 'LOGIN', entidad: 'sesion', idEntidad: user.IdUsuario, nombre: user.Login });
     const response = NextResponse.json({ success: true, data: sessionUser, error: null });
     response.headers.set('Set-Cookie', createSessionCookie(sessionUser));
     return response;

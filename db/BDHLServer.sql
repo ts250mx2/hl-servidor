@@ -55,13 +55,16 @@ CREATE TABLE IF NOT EXISTS `tblAgentes` (
   `Uuid`              CHAR(36)    NOT NULL COMMENT 'identificador publico para el webservice',
   `Agente`            VARCHAR(45) NOT NULL,
   `IdLlave`           INT NOT NULL COMMENT 'llave (proveedor + modelo) que ejecuta este agente',
+  `IdLlaveRespaldo`   INT NULL COMMENT 'llave con la que el proxy reintenta si la principal falla (mismo API)',
   `Status`            INT NOT NULL DEFAULT 1,
   `FechaAlta`         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `FechaModificacion` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`IdAgente`),
   UNIQUE KEY `uq_uuid` (`Uuid`),
   KEY `ix_llave` (`IdLlave`),
-  CONSTRAINT `fk_agentes_llave` FOREIGN KEY (`IdLlave`) REFERENCES `tblLlaves` (`IdLlave`)
+  KEY `ix_llave_respaldo` (`IdLlaveRespaldo`),
+  CONSTRAINT `fk_agentes_llave` FOREIGN KEY (`IdLlave`) REFERENCES `tblLlaves` (`IdLlave`),
+  CONSTRAINT `fk_agentes_llave_respaldo` FOREIGN KEY (`IdLlaveRespaldo`) REFERENCES `tblLlaves` (`IdLlave`)
 ) ENGINE = InnoDB;
 
 -- ── 5b. Keys de acceso: credencial de cada aplicación para el webservice ──
@@ -105,6 +108,24 @@ CREATE TABLE IF NOT EXISTS `tblBitacora` (
   `Detalle`    VARCHAR(200) NULL,
   PRIMARY KEY (`IdBitacora`),
   KEY `ix_fecha` (`Fecha`)
+) ENGINE = InnoDB;
+
+-- ── 7b. Auditoria del portal: quien cambio que (sin secretos) ────────
+CREATE TABLE IF NOT EXISTS `tblAuditoria` (
+  `IdAuditoria` INT NOT NULL AUTO_INCREMENT,
+  `Fecha`       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `IdUsuario`   INT          NULL COMMENT 'usuario del portal; NULL si ya no existe o fue un login fallido',
+  `Usuario`     VARCHAR(80)  NOT NULL COMMENT 'nombre del usuario al momento del cambio',
+  `IP`          VARCHAR(45)  NOT NULL,
+  `Accion`      VARCHAR(20)  NOT NULL COMMENT 'CREAR | EDITAR | ELIMINAR | REGENERAR | LOGIN | LOGIN_FALLIDO',
+  `Entidad`     VARCHAR(20)  NOT NULL COMMENT 'llave | agente | key | ip | usuario | sesion',
+  `IdEntidad`   INT          NULL,
+  `Nombre`      VARCHAR(100) NOT NULL COMMENT 'nombre del registro afectado',
+  `Cambios`     JSON         NULL COMMENT '{ campo: { antes, despues } } solo de lo que cambio; nunca secretos',
+  `Detalle`     VARCHAR(200) NULL,
+  PRIMARY KEY (`IdAuditoria`),
+  KEY `ix_auditoria_fecha` (`Fecha`),
+  KEY `ix_auditoria_entidad` (`Entidad`, `IdEntidad`)
 ) ENGINE = InnoDB;
 
 -- ── 8. Datos iniciales ────────────────────────────────────────────────
