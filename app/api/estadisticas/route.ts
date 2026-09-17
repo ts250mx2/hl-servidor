@@ -19,6 +19,9 @@ export interface SerieRow {
   clave: string | null;
   etiqueta: string | null;
   total: number;
+  costo: number;
+  tokens: number;
+  duracionProm: number | null;
 }
 
 export interface PorGrupoRow {
@@ -26,7 +29,18 @@ export interface PorGrupoRow {
   etiqueta: string | null;
   total: number;
   ok: number;
+  costo: number;
+  tokens: number;
+  duracionProm: number | null;
+  duracionMax: number | null;
+  /** Llamadas con tokens pero sin precio para el modelo (gasto no estimado). */
+  sinPrecio: number;
 }
+
+/** Sumas de uso que comparten la serie y el agrupado. */
+const USO_SQL = `SUM(b.CostoUsd) AS costo,
+       SUM(IFNULL(b.TokensEntrada, 0) + IFNULL(b.TokensSalida, 0) + IFNULL(b.TokensCacheLectura, 0) + IFNULL(b.TokensCacheEscritura, 0)) AS tokens,
+       AVG(b.DuracionMs) AS duracionProm`;
 
 /** Acepta "YYYY-MM-DD" (dia completo) o "YYYY-MM-DDTHH:mm" (minuto completo). */
 function parseFecha(raw: string | null, fin: boolean): Date | null {
@@ -102,7 +116,7 @@ export async function GET(request: NextRequest) {
     const formato = FORMATO_PERIODO[granularidad];
 
     const [serie] = await pool.query(
-      `SELECT DATE_FORMAT(b.Fecha, ?) AS periodo, ${dim.clave} AS clave, ${dim.etiqueta} AS etiqueta, COUNT(*) AS total
+      `SELECT DATE_FORMAT(b.Fecha, ?) AS periodo, ${dim.clave} AS clave, ${dim.etiqueta} AS etiqueta, COUNT(*) AS total, ${USO_SQL}
        FROM tblBitacora b
        LEFT JOIN tblAgentes a ON a.IdAgente = b.IdAgente
        WHERE ${where}
@@ -112,7 +126,8 @@ export async function GET(request: NextRequest) {
     );
 
     const [porGrupo] = await pool.query(
-      `SELECT ${dim.clave} AS clave, ${dim.etiqueta} AS etiqueta, COUNT(*) AS total, SUM(b.Resultado = 'OK') AS ok
+      `SELECT ${dim.clave} AS clave, ${dim.etiqueta} AS etiqueta, COUNT(*) AS total, SUM(b.Resultado = 'OK') AS ok, ${USO_SQL},
+              MAX(b.DuracionMs) AS duracionMax, SUM(b.TokensSalida IS NOT NULL AND b.CostoUsd IS NULL) AS sinPrecio
        FROM tblBitacora b
        LEFT JOIN tblAgentes a ON a.IdAgente = b.IdAgente
        WHERE ${where}
@@ -126,8 +141,11 @@ export async function GET(request: NextRequest) {
       hasta,
       granularidad,
       agrupar,
-      serie: (serie as SerieRow[]).map((r) => ({ ...r, total: Number(r.total) })),
-      porGrupo: (porGrupo as PorGrupoRow[]).map((r) => ({ ...r, total: Number(r.total), ok: Number(r.ok) })),
+      serie: (serie as SerieRow[]).map((r) => ({ ...r, total: Number(r.total), costo: Number(r.costo ?? 0), tokens: Number(r.tokens ?? 0), duracionProm: r.duracionProm === null ? null : Number(r.duracionProm) })),
+      porGrupo: (porGrupo as PorGrupoRow[]).map((r) => ({
+        ...r, total: Number(r.total), ok: Number(r.ok), costo: Number(r.costo ?? 0), tokens: Number(r.tokens ?? 0),
+        duracionProm: r.duracionProm === null ? null : Number(r.duracionProm), duracionMax: r.duracionMax === null ? null : Number(r.duracionMax), sinPrecio: Number(r.sinPrecio ?? 0),
+      })),
     });
   });
 }

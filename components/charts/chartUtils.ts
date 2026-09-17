@@ -45,6 +45,13 @@ export function niceTicks(max: number, count = 4): number[] {
 
 export const fmtNum = new Intl.NumberFormat('es-MX');
 
+const usdCentavos = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const usdFino = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 4 });
+/** Gasto en USD: con 4 decimales por debajo de un dolar, para que las llamadas chicas no salgan en $0.00. */
+export const fmtUsd = (v: number): string => (Math.abs(v) < 1 ? usdFino : usdCentavos).format(v);
+/** Duracion: ms por debajo de un segundo, segundos con un decimal despues. */
+export const fmtMs = (ms: number): string => (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`);
+
 /** Etiqueta corta del periodo segun la granularidad del API. */
 export function fmtPeriodo(periodo: string, granularidad: 'hora' | 'dia' | 'mes'): string {
   if (granularidad === 'hora') return periodo.slice(11, 16);

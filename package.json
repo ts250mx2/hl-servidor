@@ -12,7 +12,8 @@
     "hash": "tsx scripts/hash-password.ts",
     "ws": "tsx scripts/probar-ws.ts",
     "db:respaldar": "tsx scripts/respaldar-bd.ts",
-    "db:verificar": "tsx scripts/verificar-master-key.ts"
+    "db:verificar": "tsx scripts/verificar-master-key.ts",
+    "db:recalcular": "tsx scripts/recalcular-costos.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

@@ -9,7 +9,7 @@ import type { SessionUser } from './session';
  */
 
 export type AccionAuditoria = 'CREAR' | 'EDITAR' | 'ELIMINAR' | 'REGENERAR' | 'LOGIN' | 'LOGIN_FALLIDO';
-export type EntidadAuditoria = 'llave' | 'agente' | 'key' | 'ip' | 'usuario' | 'sesion';
+export type EntidadAuditoria = 'llave' | 'agente' | 'key' | 'ip' | 'usuario' | 'sesion' | 'precio';
 
 /** Valores comparables de un registro (fechas ya como texto, secretos ya sustituidos). */
 export type Instantanea = Record<string, string | number | boolean | null | undefined>;

@@ -87,6 +87,23 @@ export function apiDeRuta(path: string): ProviderApi {
   return RUTAS_POR_API.find((r) => r.patron.test(path))?.api ?? null;
 }
 
+/**
+ * En chat/completions de OpenAI el stream no trae el uso de tokens salvo que se pida con
+ * stream_options.include_usage. Se agrega solo ahi (otros compatibles podrian rechazarlo).
+ */
+export function pedirUsoEnStream(body: string, proveedor: string, path: string): string {
+  if (!body || proveedor !== 'openai' || !/^v1\/chat\/completions(\/|$)/.test(path)) return body;
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return body;
+    const o = parsed as Record<string, unknown>;
+    if (o.stream !== true || o.stream_options !== undefined) return body;
+    return JSON.stringify({ ...o, stream_options: { include_usage: true } });
+  } catch {
+    return body;
+  }
+}
+
 /** Sustituye "model" en un cuerpo JSON. Si el cuerpo no es JSON o no trae model, lo deja igual. */
 export function rewriteModelInBody(body: string, modelo: string): string {
   if (!body) return body;

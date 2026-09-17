@@ -26,7 +26,7 @@ interface AuditRow {
 
 const LIMITS = [100, 250, 500];
 
-const ENTIDAD: Record<string, string> = { llave: 'Llave de API', agente: 'Agente', key: 'Key de acceso', ip: 'IP permitida', usuario: 'Usuario', sesion: 'Sesión' };
+const ENTIDAD: Record<string, string> = { llave: 'Llave de API', agente: 'Agente', key: 'Key de acceso', ip: 'IP permitida', usuario: 'Usuario', sesion: 'Sesión', precio: 'Precio' };
 const ACCION: Record<string, { texto: string; clase: string }> = {
   CREAR: { texto: 'Creó', clase: 'badge-ok' },
   EDITAR: { texto: 'Editó', clase: 'badge-info' },
@@ -39,6 +39,7 @@ const CAMPO: Record<string, string> = {
   Llave: 'Nombre', Proveedor: 'Proveedor', Modelo: 'Modelo', FechaCaducidad: 'Caducidad', Status: 'Estado',
   Agente: 'Nombre', IdLlave: 'Llave', LlaveNombre: 'Llave', LlaveRespaldo: 'Llave de respaldo',
   Nombre: 'Nombre', IP: 'IP', Descripcion: 'Descripción', Usuario: 'Nombre', Login: 'Login',
+  Entrada: 'Entrada USD/M', Salida: 'Salida USD/M', CacheLectura: 'Caché lectura', CacheEscritura: 'Caché escritura', Nota: 'Nota',
 };
 
 function parseCambios(raw: AuditRow['Cambios']): Record<string, Cambio> {

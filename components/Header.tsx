@@ -16,6 +16,7 @@ const TITLES: Record<string, string> = {
   '/': 'Resumen',
   '/llaves': 'Llaves de API',
   '/agentes': 'Agentes',
+  '/precios': 'Precios por modelo',
   '/keys': 'Keys de acceso',
   '/ips': 'IPs permitidas',
   '/usuarios': 'Usuarios',

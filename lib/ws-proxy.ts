@@ -1,5 +1,7 @@
 import { decryptSecret } from './crypto';
-import { apiDeRuta, getUpstream, rewriteModelInBody, type ProxyUpstream } from './proxy-providers';
+import { apiDeRuta, getUpstream, pedirUsoEnStream, rewriteModelInBody, type ProxyUpstream } from './proxy-providers';
+import { calcularCosto, precioPara } from './precios';
+import { extraerUso, instrumentarRespuesta, registrarUso } from './uso';
 import { providerApi, providerLabel } from './providers';
 import { autenticarWs, denyWs, errorDetalle, llaveRespaldoUtilizable, logWs, touchKey } from './ws-auth';
 
@@ -70,16 +72,18 @@ async function enviarAlProveedor(request: Request, method: string, pathSegments:
   const path = destino.upstream.rewritePath(pathSegments.join('/'), destino.modelo);
   const headers = buildUpstreamHeaders(request, destino.upstream.forwardHeaders, destino.upstream.defaultHeaders);
   destino.upstream.auth(headers, decryptSecret(destino.llaveCifrada));
+  const cuerpo = body === undefined ? undefined : pedirUsoEnStream(rewriteModelInBody(body, destino.modelo), destino.proveedor, path);
   return fetch(buildTargetUrl(destino.upstream.baseUrl, path, request.url), {
     method,
     headers,
-    body: body === undefined ? undefined : rewriteModelInBody(body, destino.modelo),
+    body: cuerpo,
     redirect: 'manual',
     signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
   });
 }
 
 export async function proxyRequest(request: Request, uuid: string, pathSegments: string[]): Promise<Response> {
+  const inicioMs = Date.now();
   const auth = await autenticarWs(request, uuid);
   if (!auth.ok) return auth.response;
   const { ip, prefijo, key, agente } = auth.ctx;
@@ -131,14 +135,25 @@ export async function proxyRequest(request: Request, uuid: string, pathSegments:
 
     await touchKey(key.IdKey);
     const atendio = conRespaldo ? { ...agente, Llave: destino.nombre, Proveedor: destino.proveedor, Modelo: destino.modelo } : agente;
-    await logWs(ip, prefijo, key, atendio, respuesta.ok ? 'OK' : 'ERROR', `${resumen} · ${respuesta.status}${conRespaldo ? ` · respaldo "${destino.nombre}"` : ''}`);
+    const idBitacora = await logWs(ip, prefijo, key, atendio, respuesta.ok ? 'OK' : 'ERROR', `${resumen} · ${respuesta.status}${conRespaldo ? ` · respaldo "${destino.nombre}"` : ''}`);
+
+    /* Duracion, tokens y gasto: se leen del cuerpo conforme pasa hacia la app, sin retrasarlo. */
+    const { proveedor, modelo } = destino;
+    const cuerpoInstrumentado = instrumentarRespuesta(respuesta, inicioMs, (fin) => {
+      if (!idBitacora) return;
+      void (async () => {
+        const tokens = respuesta.ok && !fin.truncado ? extraerUso(fin.cuerpo) : null;
+        const precio = tokens ? await precioPara(proveedor, modelo) : null;
+        await registrarUso(idBitacora, { duracionMs: fin.duracionMs, tokens, costoUsd: tokens && precio ? calcularCosto(tokens, precio) : null });
+      })();
+    });
 
     const headersRespuesta = buildResponseHeaders(respuesta);
     /* Con que proveedor y modelo se atendio: la app lo puede mostrar sin consultar /api/ws/llave. */
     headersRespuesta.set('X-HL-Proveedor', destino.proveedor);
     headersRespuesta.set('X-HL-Modelo', destino.modelo);
     if (conRespaldo) headersRespuesta.set('X-HL-Respaldo', '1');
-    return new Response(respuesta.body, { status: respuesta.status, headers: headersRespuesta });
+    return new Response(cuerpoInstrumentado, { status: respuesta.status, headers: headersRespuesta });
   } catch (error) {
     console.error('Proxy webservice error:', error);
     await logWs(ip, prefijo, key, agente, 'ERROR', `${resumen} · ${errorDetalle(error)}`);

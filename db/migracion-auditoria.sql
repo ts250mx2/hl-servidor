@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS `tblAuditoria` (
   `Usuario`     VARCHAR(80)  NOT NULL COMMENT 'nombre del usuario al momento del cambio',
   `IP`          VARCHAR(45)  NOT NULL,
   `Accion`      VARCHAR(20)  NOT NULL COMMENT 'CREAR | EDITAR | ELIMINAR | REGENERAR | LOGIN | LOGIN_FALLIDO',
-  `Entidad`     VARCHAR(20)  NOT NULL COMMENT 'llave | agente | key | ip | usuario | sesion',
+  `Entidad`     VARCHAR(20)  NOT NULL COMMENT 'llave | agente | key | ip | usuario | sesion | precio',
   `IdEntidad`   INT          NULL,
   `Nombre`      VARCHAR(100) NOT NULL COMMENT 'nombre del registro afectado',
   `Cambios`     JSON         NULL COMMENT '{ campo: { antes, despues } } solo de lo que cambio; nunca secretos',

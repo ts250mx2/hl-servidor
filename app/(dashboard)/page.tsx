@@ -9,7 +9,7 @@ import { providerColor, providerShort } from '@/lib/providers';
 import ProviderMark from '@/components/ProviderMark';
 import Sparkline from '@/components/charts/Sparkline';
 import Donut from '@/components/charts/Donut';
-import { fmtNum } from '@/components/charts/chartUtils';
+import { fmtMs, fmtNum, fmtUsd } from '@/components/charts/chartUtils';
 
 interface Stats {
   llaves: number;
@@ -26,10 +26,12 @@ interface Stats {
   consultas7d: number;
   agentesSinRespaldo: number;
   llavesNoDescifrables: number;
+  costo7d: number;
+  latencia24h: number | null;
   diasAviso: number;
   diasTendencia: number;
   ultimos: { Fecha: string; IP: string; KeyPrefijo: string | null; Aplicacion: string | null; Proveedor: string | null; Modelo: string | null; Resultado: string; Agente: string | null }[];
-  porProveedor: { proveedor: string | null; total: number; ok: number }[];
+  porProveedor: { proveedor: string | null; total: number; ok: number; costo: number }[];
   catalogo: { proveedor: string; llaves: number; agentes: number }[];
   tendencia: { dia: string; total: number }[];
 }
@@ -110,6 +112,8 @@ export default function DashboardPage() {
               <div className="kpi"><span className="kpi-value">{fmtNum.format(stats.consultas24h)}</span><span className="kpi-label">últimas 24 h</span></div>
               <div className="kpi"><span className="kpi-value" style={{ color: stats.rechazos24h ? 'var(--danger)' : 'inherit' }}>{fmtNum.format(stats.rechazos24h)}</span><span className="kpi-label">rechazos 24 h</span></div>
               <div className="kpi"><span className="kpi-value" style={{ color: okRate >= 95 ? '#16a34a' : 'var(--warning)' }}>{okRate}%</span><span className="kpi-label">aceptación 24 h</span></div>
+              <div className="kpi"><span className="kpi-value">{fmtUsd(stats.costo7d)}</span><span className="kpi-label">gasto estimado {stats.diasTendencia} d</span></div>
+              <div className="kpi"><span className="kpi-value">{stats.latencia24h === null ? '—' : fmtMs(stats.latencia24h)}</span><span className="kpi-label">latencia prom. 24 h</span></div>
             </div>
             <Sparkline labels={trend.labels} values={trend.values} height={140} ariaLabel="Llamadas por día" />
           </div>
@@ -155,7 +159,7 @@ export default function DashboardPage() {
                   <div key={p.proveedor ?? 'null'} className="provider-row">
                     <ProviderMark id={p.proveedor} size={30} />
                     <div>
-                      <div className="name"><span>{providerShort(p.proveedor)}</span><span className="sub">{pct}% · {okPct}% OK</span></div>
+                      <div className="name"><span>{providerShort(p.proveedor)}</span><span className="sub">{pct}% · {okPct}% OK · {fmtUsd(p.costo)}</span></div>
                       <div className="share"><span style={{ width: `${pct}%`, background: providerColor(p.proveedor) }} /></div>
                     </div>
                     <div className="count">{fmtNum.format(p.total)}</div>

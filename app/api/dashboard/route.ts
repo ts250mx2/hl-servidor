@@ -6,7 +6,7 @@ const DAYS_WARNING = 15;
 const TREND_DAYS = 7;
 const LAST_CALLS = 8;
 
-interface ProviderRow { Proveedor: string | null; total: number; ok: number }
+interface ProviderRow { Proveedor: string | null; total: number; ok: number; costo: number }
 interface LlaveProviderRow { Proveedor: string; llaves: number; agentes: number }
 interface DayRow { dia: string; total: number }
 
@@ -27,8 +27,10 @@ export async function GET() {
         (SELECT COUNT(*) FROM tblBitacora WHERE Fecha >= DATE_SUB(NOW(), INTERVAL 1 DAY)) AS consultas24h,
         (SELECT COUNT(*) FROM tblBitacora WHERE Fecha >= DATE_SUB(NOW(), INTERVAL 1 DAY) AND Resultado <> 'OK') AS rechazos24h,
         (SELECT COUNT(*) FROM tblBitacora WHERE Fecha >= DATE_SUB(NOW(), INTERVAL ? DAY)) AS consultas7d,
-        (SELECT COUNT(*) FROM tblAgentes WHERE Status = 1 AND IdLlaveRespaldo IS NULL) AS agentesSinRespaldo
-    `, [DAYS_WARNING, TREND_DAYS]);
+        (SELECT COUNT(*) FROM tblAgentes WHERE Status = 1 AND IdLlaveRespaldo IS NULL) AS agentesSinRespaldo,
+        (SELECT IFNULL(SUM(CostoUsd), 0) FROM tblBitacora WHERE Fecha >= DATE_SUB(NOW(), INTERVAL ? DAY)) AS costo7d,
+        (SELECT AVG(DuracionMs) FROM tblBitacora WHERE Fecha >= DATE_SUB(NOW(), INTERVAL 1 DAY) AND Resultado = 'OK' AND DuracionMs IS NOT NULL) AS latencia24h
+    `, [DAYS_WARNING, TREND_DAYS, TREND_DAYS]);
 
     const [ultimos] = await pool.query(`
       SELECT b.Fecha, b.IP, b.KeyPrefijo, b.Aplicacion, b.Proveedor, b.Modelo, b.Resultado, a.Agente
@@ -44,7 +46,7 @@ export async function GET() {
 
     /* Llamadas por proveedor en los ultimos dias (para la dona y el ranking). */
     const [porProveedor] = await pool.query(`
-      SELECT b.Proveedor, COUNT(*) AS total, SUM(b.Resultado = 'OK') AS ok
+      SELECT b.Proveedor, COUNT(*) AS total, SUM(b.Resultado = 'OK') AS ok, IFNULL(SUM(b.CostoUsd), 0) AS costo
       FROM tblBitacora b
       WHERE b.Fecha >= DATE_SUB(NOW(), INTERVAL ? DAY)
       GROUP BY b.Proveedor
@@ -67,13 +69,16 @@ export async function GET() {
       GROUP BY dia ORDER BY dia
     `, [TREND_DAYS - 1]);
 
+    const base = (rows as Record<string, unknown>[])[0];
     return ok({
-      ...(rows as object[])[0],
+      ...base,
+      costo7d: Number(base.costo7d ?? 0),
+      latencia24h: base.latencia24h === null || base.latencia24h === undefined ? null : Number(base.latencia24h),
       ultimos,
       diasAviso: DAYS_WARNING,
       diasTendencia: TREND_DAYS,
       llavesNoDescifrables,
-      porProveedor: (porProveedor as ProviderRow[]).map((r) => ({ proveedor: r.Proveedor, total: Number(r.total), ok: Number(r.ok) })),
+      porProveedor: (porProveedor as ProviderRow[]).map((r) => ({ proveedor: r.Proveedor, total: Number(r.total), ok: Number(r.ok), costo: Number(r.costo) })),
       catalogo: (catalogo as LlaveProviderRow[]).map((r) => ({ proveedor: r.Proveedor, llaves: Number(r.llaves), agentes: Number(r.agentes) })),
       tendencia: (tendencia as DayRow[]).map((r) => ({ dia: r.dia, total: Number(r.total) })),
     });

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, Bot, History, KeyRound, KeySquare, LayoutDashboard, ScrollText, ShieldCheck, Users } from 'lucide-react';
+import { BarChart3, Bot, Coins, History, KeyRound, KeySquare, LayoutDashboard, ScrollText, ShieldCheck, Users } from 'lucide-react';
 import { useSidebar } from './SidebarContext';
 import styles from './Sidebar.module.css';
 
@@ -13,6 +13,7 @@ const GROUPS = [
     links: [
       { href: '/llaves', label: 'Llaves de API', icon: KeySquare },
       { href: '/agentes', label: 'Agentes', icon: Bot },
+      { href: '/precios', label: 'Precios', icon: Coins },
     ],
   },
   {

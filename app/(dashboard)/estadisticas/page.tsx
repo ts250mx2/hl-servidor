@@ -9,7 +9,7 @@ import { providerColor, providerLabel } from '@/lib/providers';
 import ProviderMark from '@/components/ProviderMark';
 import LineChart, { type LineSeries } from '@/components/charts/LineChart';
 import BarChart, { type BarItem } from '@/components/charts/BarChart';
-import { MAX_SERIES, fmtNum, fmtPeriodo, seriesColor } from '@/components/charts/chartUtils';
+import { MAX_SERIES, fmtMs, fmtNum, fmtPeriodo, fmtUsd, seriesColor } from '@/components/charts/chartUtils';
 
 type Granularidad = 'hora' | 'dia' | 'mes';
 type Agrupar = 'agente' | 'aplicacion' | 'proveedor' | 'modelo';
@@ -19,9 +19,23 @@ interface Estadisticas {
   hasta: string;
   granularidad: Granularidad;
   agrupar: Agrupar;
-  serie: { periodo: string; clave: string | null; etiqueta: string | null; total: number }[];
-  porGrupo: { clave: string | null; etiqueta: string | null; total: number; ok: number }[];
+  serie: { periodo: string; clave: string | null; etiqueta: string | null; total: number; costo: number; tokens: number; duracionProm: number | null }[];
+  porGrupo: { clave: string | null; etiqueta: string | null; total: number; ok: number; costo: number; tokens: number; duracionProm: number | null; duracionMax: number | null; sinPrecio: number }[];
 }
+
+type Metrica = 'llamadas' | 'costo' | 'tokens' | 'latencia';
+
+/** Que se grafica. La latencia es un promedio: al plegar series en "Otros" se promedia, no se suma. */
+const METRICAS: { id: Metrica; label: string; unidad: string; promedio: boolean; format: (v: number) => string }[] = [
+  { id: 'llamadas', label: 'Llamadas', unidad: 'llamadas', promedio: false, format: (v) => fmtNum.format(v) },
+  { id: 'costo', label: 'Gasto', unidad: 'USD estimados', promedio: false, format: fmtUsd },
+  { id: 'tokens', label: 'Tokens', unidad: 'tokens', promedio: false, format: (v) => fmtNum.format(Math.round(v)) },
+  { id: 'latencia', label: 'Latencia', unidad: 'promedio por llamada', promedio: true, format: fmtMs },
+];
+
+type FilaUso = { total: number; costo: number; tokens: number; duracionProm: number | null };
+const valorDe = (r: FilaUso, m: Metrica): number =>
+  m === 'llamadas' ? r.total : m === 'costo' ? r.costo : m === 'tokens' ? r.tokens : r.duracionProm ?? 0;
 
 interface AgenteOpt { IdAgente: number; Agente: string }
 interface KeyOpt { IdKey: number; Nombre: string }
@@ -96,10 +110,15 @@ interface Vista {
   total: number;
   ok: number;
   rechazos: number;
+  costo: number;
+  tokens: number;
+  /** Promedio ponderado por llamadas; null si ninguna llamada trae duracion. */
+  duracionProm: number | null;
+  sinPrecio: number;
 }
 
 /** Convierte la respuesta del API en series, barras y totales listos para dibujar. */
-function construirVista(data: Estadisticas, desde: string, hasta: string): Vista {
+function construirVista(data: Estadisticas, desde: string, hasta: string, metrica: Metrica): Vista {
   const periodos = periodosDelRango(desde, hasta, data.granularidad);
   const labels = periodos.map((p) => fmtPeriodo(p, data.granularidad));
   const dim = AGRUPACIONES.find((a) => a.id === data.agrupar) ?? AGRUPACIONES[0];
@@ -118,7 +137,9 @@ function construirVista(data: Estadisticas, desde: string, hasta: string): Vista
   /* Al agrupar por proveedor cada serie usa su color de marca; en las demas dimensiones, la paleta categorica. */
   const colorDe = (k: string, idx: number) => (porProveedor && k !== 'null' ? providerColor(k) : seriesColor(idx));
 
+  const promedio = METRICAS.find((m) => m.id === metrica)?.promedio ?? false;
   const seriesMap = new Map<string, LineSeries>();
+  const conteo = new Map<string, number[]>();
   for (const row of data.serie) {
     const k = claveDe(row.clave);
     const idx = slot.get(k) ?? MAX_SERIES - 1;
@@ -133,7 +154,18 @@ function construirVista(data: Estadisticas, desde: string, hasta: string): Vista
       });
     }
     const pos = periodos.indexOf(row.periodo);
-    if (pos >= 0) seriesMap.get(id)!.values[pos] += row.total;
+    if (pos < 0) continue;
+    const valores = seriesMap.get(id)!.values;
+    const v = valorDe(row, metrica);
+    if (!promedio) {
+      valores[pos] += v;
+    } else if (row.duracionProm !== null) {
+      // Promedio ponderado por llamadas cuando varias filas caen en la misma serie ("Otros").
+      const pesos = conteo.get(id) ?? new Array(periodos.length).fill(0);
+      valores[pos] = (valores[pos] * pesos[pos] + v * row.total) / (pesos[pos] + row.total);
+      pesos[pos] += row.total;
+      conteo.set(id, pesos);
+    }
   }
   const series = [...seriesMap.values()].sort((a, b) => (slot.get(a.id) ?? MAX_SERIES) - (slot.get(b.id) ?? MAX_SERIES));
 
@@ -143,15 +175,21 @@ function construirVista(data: Estadisticas, desde: string, hasta: string): Vista
       id: k,
       label: nombreDe(r),
       color: colorDe(k, slot.get(k) ?? MAX_SERIES - 1),
-      value: r.total,
-      detail: `${fmtNum.format(r.ok)} OK · ${fmtNum.format(r.total - r.ok)} rechazadas`,
+      value: valorDe(r, metrica),
+      detail: `${fmtNum.format(r.ok)} OK · ${fmtNum.format(r.total - r.ok)} rechazadas · ${fmtUsd(r.costo)} · ${fmtNum.format(r.tokens)} tokens${r.duracionProm !== null ? ` · ${fmtMs(r.duracionProm)} prom.` : ''}`,
       provider: porProveedor ? r.clave : undefined,
     };
   });
 
   const total = data.porGrupo.reduce((s, r) => s + r.total, 0);
   const ok = data.porGrupo.reduce((s, r) => s + r.ok, 0);
-  return { periodos, labels, series, barras, total, ok, rechazos: total - ok };
+  const costo = data.porGrupo.reduce((s, r) => s + r.costo, 0);
+  const tokens = data.porGrupo.reduce((s, r) => s + r.tokens, 0);
+  const sinPrecio = data.porGrupo.reduce((s, r) => s + r.sinPrecio, 0);
+  const conDuracion = data.porGrupo.filter((r) => r.duracionProm !== null);
+  const llamadasConDuracion = conDuracion.reduce((s, r) => s + r.total, 0);
+  const duracionProm = llamadasConDuracion ? conDuracion.reduce((s, r) => s + (r.duracionProm ?? 0) * r.total, 0) / llamadasConDuracion : null;
+  return { periodos, labels, series, barras, total, ok, rechazos: total - ok, costo, tokens, duracionProm, sinPrecio };
 }
 
 const parseAgrupar = (raw: string | null): Agrupar =>
@@ -176,6 +214,7 @@ function EstadisticasContent() {
   const [soloOk, setSoloOk] = useState(false);
   const [agrupar, setAgrupar] = useState<Agrupar>(() => parseAgrupar(searchParams.get('agrupar')));
   const [verTabla, setVerTabla] = useState(false);
+  const [metrica, setMetrica] = useState<Metrica>('llamadas');
 
   const [agentes, setAgentes] = useState<AgenteOpt[]>([]);
   const [keys, setKeys] = useState<KeyOpt[]>([]);
@@ -227,7 +266,8 @@ function EstadisticasContent() {
 
   const dimension = AGRUPACIONES.find((a) => a.id === (data?.agrupar ?? agrupar)) ?? AGRUPACIONES[0];
 
-  const vista = data ? construirVista(data, rango.desde, rango.hasta) : null;
+  const vista = data ? construirVista(data, rango.desde, rango.hasta, metrica) : null;
+  const metricaActual = METRICAS.find((m) => m.id === metrica) ?? METRICAS[0];
 
   return (
     <div className="animate-fade">
@@ -256,6 +296,14 @@ function EstadisticasContent() {
           <div className="form-group narrow">
             <label>Hasta</label>
             <input type="datetime-local" value={rango.hasta} min={rango.desde} onChange={(e) => cambiarRango({ ...rango, hasta: e.target.value })} />
+          </div>
+          <div className="form-group narrow">
+            <label>Métrica</label>
+            <div className="presets">
+              {METRICAS.map((m) => (
+                <button key={m.id} className={metrica === m.id ? 'active' : ''} onClick={() => setMetrica(m.id)}>{m.label}</button>
+              ))}
+            </div>
           </div>
           <div className="form-group narrow">
             <label>Agrupar por</label>
@@ -296,13 +344,16 @@ function EstadisticasContent() {
             <div className="card stat"><div><div className="stat-value">{fmtNum.format(vista.ok)}</div><div className="stat-label">Aceptadas</div></div></div>
             <div className="card stat"><div><div className="stat-value">{fmtNum.format(vista.rechazos)}</div><div className="stat-label">Rechazadas</div></div></div>
             <div className="card stat"><div><div className="stat-value">{vista.barras.length}</div><div className="stat-label">{dimension.plural} con actividad</div></div></div>
+            <div className="card stat"><div><div className="stat-value">{fmtUsd(vista.costo)}</div><div className="stat-label">Gasto estimado{vista.sinPrecio > 0 ? ` · ${fmtNum.format(vista.sinPrecio)} sin precio` : ''}</div></div></div>
+            <div className="card stat"><div><div className="stat-value">{fmtNum.format(vista.tokens)}</div><div className="stat-label">Tokens (entrada + salida + caché)</div></div></div>
+            <div className="card stat"><div><div className="stat-value">{vista.duracionProm === null ? '—' : fmtMs(vista.duracionProm)}</div><div className="stat-label">Latencia promedio por llamada</div></div></div>
           </div>
 
           <div className="charts-grid">
             <div className={`card chart-card ${loading ? 'loading' : ''}`}>
               <div className="chart-head">
                 <div>
-                  <div className="chart-title">Llamadas por {GRANULARIDAD_LABEL[data.granularidad]}</div>
+                  <div className="chart-title">{metricaActual.label} por {GRANULARIDAD_LABEL[data.granularidad]}</div>
                   <div className="chart-sub">
                     Una línea por {dimension.singular}{vista.series.length > MAX_SERIES - 1 ? ', los de menor volumen agrupados en "Otros"' : ''}. Arrastra sobre la gráfica para acercar.
                   </div>
@@ -320,14 +371,14 @@ function EstadisticasContent() {
                     <thead><tr><th>Periodo</th>{vista.series.map((s) => <th key={s.id} className="num">{s.label}</th>)}</tr></thead>
                     <tbody>
                       {vista.periodos.map((p, i) => (
-                        <tr key={p}><td>{p}</td>{vista.series.map((s) => <td key={s.id} className="num">{fmtNum.format(s.values[i])}</td>)}</tr>
+                        <tr key={p}><td>{p}</td>{vista.series.map((s) => <td key={s.id} className="num">{metricaActual.format(s.values[i])}</td>)}</tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               ) : (
                 <>
-                  <LineChart labels={vista.labels} titles={vista.periodos} series={vista.series} onZoom={acercar} />
+                  <LineChart labels={vista.labels} titles={vista.periodos} series={vista.series} onZoom={acercar} format={metricaActual.format} />
                   {vista.series.length > 1 && (
                     <div className="chart-legend">
                       {vista.series.map((s) => (
@@ -347,11 +398,11 @@ function EstadisticasContent() {
             <div className={`card chart-card ${loading ? 'loading' : ''}`}>
               <div className="chart-head">
                 <div>
-                  <div className="chart-title">Llamadas por {dimension.singular}</div>
-                  <div className="chart-sub">Total en el rango, de mayor a menor.</div>
+                  <div className="chart-title">{metricaActual.label} por {dimension.singular}</div>
+                  <div className="chart-sub">{metricaActual.promedio ? 'Promedio' : 'Total'} en el rango, de mayor a menor.</div>
                 </div>
               </div>
-              <BarChart items={vista.barras} />
+              <BarChart items={vista.barras} format={metricaActual.format} unidad={metricaActual.unidad} />
             </div>
           </div>
         </>

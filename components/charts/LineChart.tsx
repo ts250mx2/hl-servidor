@@ -19,6 +19,8 @@ interface LineChartProps {
   height?: number;
   /** Zoom por arrastre: se llama con el primer y ultimo indice seleccionados. */
   onZoom?: (fromIndex: number, toIndex: number) => void;
+  /** Formato de los valores (eje Y y tooltip); por defecto numero entero. */
+  format?: (v: number) => string;
 }
 
 const MARGIN = { top: 16, right: 20, bottom: 30, left: 44 };
@@ -30,7 +32,7 @@ const MARKER_R = 4;
 interface Hover { index: number; x: number; y: number }
 interface Brush { start: number; end: number }
 
-export default function LineChart({ labels, titles, series, height = 280, onZoom }: LineChartProps) {
+export default function LineChart({ labels, titles, series, height = 280, onZoom, format = (v) => fmtNum.format(v) }: LineChartProps) {
   const { ref, width } = useContainerWidth<HTMLDivElement>();
   const [hover, setHover] = useState<Hover | null>(null);
   const [brush, setBrush] = useState<Brush | null>(null);
@@ -101,7 +103,7 @@ export default function LineChart({ labels, titles, series, height = 280, onZoom
 
         <g className="chart-axis">
           {yTicks.map((t) => (
-            <text key={t} x={MARGIN.left - 8} y={yAt(t) + 4} textAnchor="end">{fmtNum.format(t)}</text>
+            <text key={t} x={MARGIN.left - 8} y={yAt(t) + 4} textAnchor="end">{format(t)}</text>
           ))}
           {labels.map((l, i) =>
             xTickIdx.has(i) ? <text key={i} x={xAt(i)} y={height - 8} textAnchor="middle">{l}</text> : null
@@ -147,7 +149,7 @@ export default function LineChart({ labels, titles, series, height = 280, onZoom
           {series.map((s) => (
             <div key={s.id} className="tt-row">
               <span className="tt-key" style={{ background: s.color }} />
-              <span className="tt-val">{fmtNum.format(s.values[hoverIdx] ?? 0)}</span>
+              <span className="tt-val">{format(s.values[hoverIdx] ?? 0)}</span>
               <span className="tt-name">{s.label}</span>
             </div>
           ))}

@@ -97,9 +97,9 @@ export async function logWs(
   agente: AgenteWsRow | null,
   resultado: Resultado,
   detalle: string | null
-): Promise<void> {
+): Promise<number | null> {
   try {
-    await pool.query(
+    const [result] = await pool.query(
       `INSERT INTO tblBitacora (IP, KeyPrefijo, IdKey, Aplicacion, IdAgente, Proveedor, Modelo, Resultado, Detalle)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -114,8 +114,10 @@ export async function logWs(
         detalle ? detalle.slice(0, MAX_DETALLE) : null,
       ]
     );
+    return (result as { insertId: number }).insertId ?? null;
   } catch (error) {
     console.error('No se pudo escribir en tblBitacora:', error);
+    return null;
   }
 }
 

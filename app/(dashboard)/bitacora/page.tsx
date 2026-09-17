@@ -5,6 +5,7 @@ import { useLoad } from '@/lib/hooks';
 import { RefreshCw, ScrollText } from 'lucide-react';
 import { api, fmtDate } from '@/lib/client';
 import { ProviderBadge } from '@/components/ProviderMark';
+import { fmtMs, fmtNum, fmtUsd } from '@/components/charts/chartUtils';
 
 interface LogRow {
   IdBitacora: number;
@@ -17,6 +18,12 @@ interface LogRow {
   Modelo: string | null;
   Resultado: string;
   Detalle: string | null;
+  DuracionMs: number | null;
+  TokensEntrada: number | null;
+  TokensSalida: number | null;
+  TokensCacheLectura: number | null;
+  TokensCacheEscritura: number | null;
+  CostoUsd: string | number | null;
 }
 
 const LIMITS = [100, 250, 500];
@@ -75,9 +82,9 @@ export default function BitacoraPage() {
 
       <div className="table-wrap">
         <table className="tbl">
-          <thead><tr><th>Fecha</th><th>IP</th><th>Aplicación</th><th>Agente</th><th>Proveedor</th><th>Modelo</th><th>Resultado</th><th>Detalle</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>IP</th><th>Aplicación</th><th>Agente</th><th>Proveedor</th><th>Modelo</th><th className="num">Duración</th><th className="num">Tokens</th><th className="num">Gasto</th><th>Resultado</th><th>Detalle</th></tr></thead>
           <tbody>
-            {visible.length === 0 && <tr><td colSpan={8} className="empty">Sin registros.</td></tr>}
+            {visible.length === 0 && <tr><td colSpan={11} className="empty">Sin registros.</td></tr>}
             {visible.map((l) => (
               <tr key={l.IdBitacora}>
                 <td>{fmtDate(l.Fecha)}</td>
@@ -89,6 +96,11 @@ export default function BitacoraPage() {
                 <td>{l.Agente ?? '—'}</td>
                 <td>{l.Proveedor ? <ProviderBadge id={l.Proveedor} short /> : '—'}</td>
                 <td className="mono">{l.Modelo ?? '—'}</td>
+                <td className="num mono">{l.DuracionMs === null ? '—' : fmtMs(l.DuracionMs)}</td>
+                <td className="num mono" title={l.TokensSalida === null ? '' : `entrada ${fmtNum.format(l.TokensEntrada ?? 0)} · salida ${fmtNum.format(l.TokensSalida)} · caché ${fmtNum.format((l.TokensCacheLectura ?? 0) + (l.TokensCacheEscritura ?? 0))}`}>
+                  {l.TokensSalida === null ? '—' : fmtNum.format((l.TokensEntrada ?? 0) + l.TokensSalida + (l.TokensCacheLectura ?? 0) + (l.TokensCacheEscritura ?? 0))}
+                </td>
+                <td className="num mono">{l.CostoUsd === null ? (l.TokensSalida === null ? '—' : <span title="El modelo no tiene precio capturado" style={{ color: 'var(--warning)' }}>sin precio</span>) : fmtUsd(Number(l.CostoUsd))}</td>
                 <td>{badge(l.Resultado)}</td>
                 <td style={{ color: 'var(--text-muted)' }}>{l.Detalle ?? ''}</td>
               </tr>

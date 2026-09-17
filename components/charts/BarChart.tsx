@@ -18,6 +18,10 @@ export interface BarItem {
 
 interface BarChartProps {
   items: BarItem[];
+  /** Formato del valor de cada barra; por defecto numero entero. */
+  format?: (v: number) => string;
+  /** Que representa el valor ("llamadas", "USD") para el tooltip. */
+  unidad?: string;
 }
 
 const ROW_H = 30;
@@ -42,7 +46,7 @@ function barPath(x: number, y: number, w: number, h: number): string {
   return `M${x},${y} h${w - r} a${r},${r} 0 0 1 ${r},${r} v${h - 2 * r} a${r},${r} 0 0 1 -${r},${r} h-${w - r} z`;
 }
 
-export default function BarChart({ items }: BarChartProps) {
+export default function BarChart({ items, format = (v) => fmtNum.format(v), unidad = 'llamadas' }: BarChartProps) {
   const { ref, width } = useContainerWidth<HTMLDivElement>();
   const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null);
 
@@ -89,7 +93,7 @@ export default function BarChart({ items }: BarChartProps) {
               </text>
               <path d={barPath(x0, barY, w, BAR_H)} fill={item.color} />
               <text className="chart-label" x={x0 + w + 6} y={y + ROW_H / 2 + 4} style={{ fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
-                {fmtNum.format(item.value)}
+                {format(item.value)}
               </text>
               <rect className="chart-hit" x={0} y={y} width={width} height={ROW_H} onPointerMove={onMove(i)} onPointerLeave={() => setHover(null)} />
             </g>
@@ -102,8 +106,8 @@ export default function BarChart({ items }: BarChartProps) {
           <div className="tt-title">{items[hover.index].label}</div>
           <div className="tt-row">
             <span className="tt-key rect" style={{ background: items[hover.index].color }} />
-            <span className="tt-val">{fmtNum.format(items[hover.index].value)}</span>
-            <span className="tt-name">llamadas</span>
+            <span className="tt-val">{format(items[hover.index].value)}</span>
+            <span className="tt-name">{unidad}</span>
           </div>
           {items[hover.index].detail && <div className="chart-sub" style={{ marginTop: '0.25rem' }}>{items[hover.index].detail}</div>}
         </div>
