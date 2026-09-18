@@ -30,6 +30,8 @@ const INTERVALO_MS = 3000;
 /** Lineas que se conservan en pantalla; las mas viejas se descartan. */
 const MAX_LINEAS = 200;
 const CARGA_INICIAL = 40;
+/** Mas alla de esto una llamada sin duracion ya no se considera en curso (bitacoras de versiones sin medicion). */
+const MAX_EN_CURSO_MS = 10 * 60_000;
 
 const hora = (iso: string) => new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
@@ -93,7 +95,7 @@ export default function LiveConsole() {
       return [...refrescadas, ...nuevas].slice(-MAX_LINEAS);
     });
     // Sigue pendiente lo que fue aceptado pero aun no tiene duracion (la respuesta del proveedor no ha terminado).
-    const enCurso = (l: Llamada) => l.Resultado === 'OK' && l.DuracionMs === null && /proxy /.test(l.Detalle ?? '');
+    const enCurso = (l: Llamada) => l.Resultado === 'OK' && l.DuracionMs === null && /proxy /.test(l.Detalle ?? '') && Date.now() - new Date(l.Fecha).getTime() < MAX_EN_CURSO_MS;
     pendientes.current = [...ids.filter((id) => { const l = actualizadas.find((a) => a.IdBitacora === id); return l ? enCurso(l) : false; }), ...nuevas.filter(enCurso).map((l) => l.IdBitacora)].slice(-50);
   }, []);
 
@@ -131,7 +133,7 @@ export default function LiveConsole() {
             <span className="c-path">{resumenDetalle(l)}</span>
             <span className="c-result">{l.Resultado}</span>
             {l.Modelo && <span className="c-model">{providerShort(l.Proveedor)}/{l.Modelo}</span>}
-            {metricas(l) ? <span className="c-metrics">{metricas(l)}</span> : (l.Resultado === 'OK' && /proxy /.test(l.Detalle ?? '') && <span className="c-pending">en curso…</span>)}
+            {metricas(l) ? <span className="c-metrics">{metricas(l)}</span> : (l.Resultado === 'OK' && /proxy /.test(l.Detalle ?? '') && Date.now() - new Date(l.Fecha).getTime() < MAX_EN_CURSO_MS && <span className="c-pending">en curso…</span>)}
             {l.Resultado !== 'OK' && l.Detalle && !l.Detalle.startsWith('App:') && <span className="c-detail">{l.Detalle}</span>}
           </div>
         ))}
