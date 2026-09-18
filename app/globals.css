@@ -322,7 +322,10 @@ tr:hover .td-actions { opacity: 1; }
 .console-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
 @media (prefers-reduced-motion: reduce) { .console-status.live, .console-cursor, .console-line { animation: none; } }
 
-/* KPIs mini (arriba de la salud del catálogo) */
+/* Catálogo dentro de la tarjeta de proveedores (KPIs mini + catálogo por proveedor) */
+.provider-extra { margin-top: 0.75rem; padding-top: 0.25rem; border-top: 1px dashed var(--border); }
+
+/* KPIs mini */
 .tiles-mini { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 1rem; }
 .tile-mini { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; padding: 0.55rem 0.65rem; border-radius: var(--r); background: var(--surface-2); border: 1px solid var(--border); border-left: 3px solid var(--tile-accent, var(--primary)); transition: var(--ease); min-width: 0; }
 .tile-mini > svg { color: var(--tile-accent, var(--primary)); }

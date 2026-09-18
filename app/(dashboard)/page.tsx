@@ -154,10 +154,9 @@ export default function DashboardPage() {
               })}
             </div>
           </div>
-        </section>
 
-        {/* ── Salud ── */}
-        <section className="card span-5">
+          <div className="provider-extra">
+            <div className="chart-title" style={{ margin: '1.1rem 0 0.6rem' }}>Catálogo</div>
           <div className="tiles-mini">
             <Link href="/llaves" className="tile-mini" style={{ '--tile-accent': 'var(--indigo)' } as React.CSSProperties}>
               <KeySquare size={14} /><span className="tile-mini-value">{stats.llavesActivas}<small>/{stats.llaves}</small></span><span className="tile-mini-label">Llaves</span>
@@ -172,6 +171,24 @@ export default function DashboardPage() {
               <ShieldCheck size={14} /><span className="tile-mini-value">{stats.ipsActivas}</span><span className="tile-mini-label">IPs</span>
             </Link>
           </div>
+            <div className="chart-title" style={{ margin: '1rem 0 0.6rem' }}>Catálogo por proveedor</div>
+          <div className="catalog-grid">
+            {stats.catalogo.length === 0 && <div className="chart-sub">Sin llaves registradas.</div>}
+            {stats.catalogo.map((c) => (
+              <div key={c.proveedor} className="catalog-item">
+                <ProviderMark id={c.proveedor} size={28} />
+                <div>
+                  <div className="cname">{providerShort(c.proveedor)}</div>
+                  <div className="cmeta">{c.llaves} llave{c.llaves === 1 ? '' : 's'} · {c.agentes} agente{c.agentes === 1 ? '' : 's'}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          </div>
+        </section>
+
+        {/* ── Salud ── */}
+        <section className="card span-5">
           <div className="chart-title" style={{ marginBottom: '0.75rem' }}>Salud del catálogo</div>
           <div className="health">
             <div className={`health-row ${stats.llavesCaducadas ? 'bad' : 'ok'}`}>
@@ -201,19 +218,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="chart-title" style={{ margin: '1.1rem 0 0.6rem' }}>Catálogo por proveedor</div>
-          <div className="catalog-grid">
-            {stats.catalogo.length === 0 && <div className="chart-sub">Sin llaves registradas.</div>}
-            {stats.catalogo.map((c) => (
-              <div key={c.proveedor} className="catalog-item">
-                <ProviderMark id={c.proveedor} size={28} />
-                <div>
-                  <div className="cname">{providerShort(c.proveedor)}</div>
-                  <div className="cmeta">{c.llaves} llave{c.llaves === 1 ? '' : 's'} · {c.agentes} agente{c.agentes === 1 ? '' : 's'}</div>
-                </div>
-              </div>
-            ))}
-          </div>
         </section>
 
         {/* ── Últimas llamadas ── */}
