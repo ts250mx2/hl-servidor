@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS `tblBitacora` (
   `IdAgente`   INT NULL,
   `Proveedor`  VARCHAR(30)  NULL COMMENT 'proveedor de la llave del agente al momento de la llamada',
   `Modelo`     VARCHAR(100) NULL COMMENT 'modelo de la llave del agente al momento de la llamada',
-  `Resultado`  VARCHAR(20) NOT NULL COMMENT 'OK | IP_BLOQUEADA | KEY_INVALIDA | AGENTE_INVALIDO | AGENTE_INACTIVO | LLAVE_INACTIVA | CADUCADO | PROVEEDOR_CAMBIADO | ERROR',
+  `Resultado`  VARCHAR(20) NOT NULL COMMENT 'OK | IP_BLOQUEADA | KEY_INVALIDA | AGENTE_INVALIDO | AGENTE_INACTIVO | LLAVE_INACTIVA | CADUCADO | PROVEEDOR_CAMBIADO | AGENTE_NO_PERMITIDO | ERROR',
   `Detalle`    VARCHAR(200) NULL,
   `DuracionMs`           INT           NULL COMMENT 'ms desde que llego la peticion hasta que termino la respuesta del proveedor',
   `TokensEntrada`        INT           NULL COMMENT 'tokens de entrada a precio completo (sin cache)',
@@ -114,6 +114,16 @@ CREATE TABLE IF NOT EXISTS `tblBitacora` (
   `CostoUsd`             DECIMAL(12,6) NULL COMMENT 'gasto estimado en USD segun tblPrecios; NULL si el modelo no tiene precio',
   PRIMARY KEY (`IdBitacora`),
   KEY `ix_fecha` (`Fecha`)
+) ENGINE = InnoDB;
+
+-- ── 5c. Agentes permitidos por key (sin filas = todos) ──────────────
+CREATE TABLE IF NOT EXISTS `tblKeyAgentes` (
+  `IdKey`    INT NOT NULL,
+  `IdAgente` INT NOT NULL,
+  PRIMARY KEY (`IdKey`, `IdAgente`),
+  KEY `ix_keyagentes_agente` (`IdAgente`),
+  CONSTRAINT `fk_keyagentes_key` FOREIGN KEY (`IdKey`) REFERENCES `tblKeys` (`IdKey`) ON DELETE CASCADE,
+  CONSTRAINT `fk_keyagentes_agente` FOREIGN KEY (`IdAgente`) REFERENCES `tblAgentes` (`IdAgente`) ON DELETE CASCADE
 ) ENGINE = InnoDB;
 
 -- ── 7b. Auditoria del portal: quien cambio que (sin secretos) ────────

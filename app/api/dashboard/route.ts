@@ -28,6 +28,7 @@ export async function GET() {
         (SELECT COUNT(*) FROM tblBitacora WHERE Fecha >= DATE_SUB(NOW(), INTERVAL 1 DAY) AND Resultado <> 'OK') AS rechazos24h,
         (SELECT COUNT(*) FROM tblBitacora WHERE Fecha >= DATE_SUB(NOW(), INTERVAL ? DAY)) AS consultas7d,
         (SELECT COUNT(*) FROM tblAgentes WHERE Status = 1 AND IdLlaveRespaldo IS NULL) AS agentesSinRespaldo,
+        (SELECT COUNT(*) FROM tblKeys k WHERE k.Status = 1 AND NOT EXISTS (SELECT 1 FROM tblKeyAgentes ka WHERE ka.IdKey = k.IdKey)) AS keysSinRestriccion,
         (SELECT IFNULL(SUM(CostoUsd), 0) FROM tblBitacora WHERE Fecha >= DATE_SUB(NOW(), INTERVAL ? DAY)) AS costo7d,
         (SELECT AVG(DuracionMs) FROM tblBitacora WHERE Fecha >= DATE_SUB(NOW(), INTERVAL 1 DAY) AND Resultado = 'OK' AND DuracionMs IS NOT NULL) AS latencia24h
     `, [DAYS_WARNING, TREND_DAYS, TREND_DAYS]);

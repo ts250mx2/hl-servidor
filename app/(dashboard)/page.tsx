@@ -26,6 +26,7 @@ interface Stats {
   rechazos24h: number;
   consultas7d: number;
   agentesSinRespaldo: number;
+  keysSinRestriccion: number;
   llavesNoDescifrables: number;
   costo7d: number;
   latencia24h: number | null;
@@ -209,6 +210,11 @@ export default function DashboardPage() {
               <span className="h-icon">{stats.agentesSinRespaldo ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}</span>
               <span className="h-text">Agentes activos sin llave de respaldo</span>
               <span className="h-val">{stats.agentesSinRespaldo}</span>
+            </div>
+            <div className={`health-row ${stats.keysSinRestriccion ? 'warn' : 'ok'}`}>
+              <span className="h-icon">{stats.keysSinRestriccion ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}</span>
+              <span className="h-text">Keys con acceso a todos los agentes</span>
+              <span className="h-val">{stats.keysSinRestriccion}</span>
             </div>
             <div className={`health-row ${stats.llavesNoDescifrables ? 'bad' : 'ok'}`}>
               <span className="h-icon">{stats.llavesNoDescifrables ? <XCircle size={18} /> : <CheckCircle2 size={18} />}</span>

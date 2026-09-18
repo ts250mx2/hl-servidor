@@ -3,6 +3,7 @@ import pool from '@/lib/db';
 import { cleanText, fail, ok, parseId, parseStatus, withAuth } from '@/lib/api';
 import { encryptSecret, generateAccessKey, generateSharedSecret, hashAccessKey, keyPrefix } from '@/lib/crypto';
 import { registrarAuditoria } from '@/lib/auditoria';
+import { agentesPorKey, guardarAgentesDeKey, leerAgentes, nombresAgentes, textoAgentes } from '../comun';
 
 interface KeyAuditable { Nombre: string; Status: number; KeyPrefijo: string }
 
@@ -23,8 +24,14 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
     const nombre = cleanText(body.Nombre, 80);
     if (!nombre) return fail('El nombre de la aplicacion es requerido');
 
+    const agentesIds = leerAgentes(body.Agentes);
+    if (agentesIds === undefined) return fail('Agentes invalidos');
+    const nombres = await nombresAgentes(agentesIds);
+    if (nombres.size !== agentesIds.length) return fail('Alguno de los agentes no existe', 404);
+
     const antes = await keyActual(id);
     if (!antes) return fail('Key no encontrada', 404);
+    const agentesAntes = (await agentesPorKey()).get(id) ?? [];
 
     const status = parseStatus(body.Status);
     const fields = ['Nombre = ?', 'Status = ?'];
@@ -42,9 +49,11 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
     );
     const affected = (result as { affectedRows: number }).affectedRows;
     if (!affected) return fail('Key no encontrada', 404);
+    await guardarAgentesDeKey(id, agentesIds);
     await registrarAuditoria({
       user, request, accion: newKey ? 'REGENERAR' : 'EDITAR', entidad: 'key', idEntidad: id, nombre,
-      antes: { Nombre: antes.Nombre, Status: antes.Status }, despues: { Nombre: nombre, Status: status },
+      antes: { Nombre: antes.Nombre, Status: antes.Status, Agentes: textoAgentes(agentesAntes.map((a) => a.Agente)) },
+      despues: { Nombre: nombre, Status: status, Agentes: textoAgentes([...nombres.values()]) },
       detalle: newKey ? `Key y secreto nuevos (${antes.KeyPrefijo}… -> ${keyPrefix(newKey)}…)` : null,
     });
     return ok({ IdKey: id, Key: newKey, Secreto: newSecret });

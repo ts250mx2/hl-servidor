@@ -16,6 +16,8 @@ interface KeyRow {
   UltimoUso: string | null;
   FechaAlta: string;
   TieneSecreto: number;
+  /** Agentes que puede usar; vacio = todos (sin restriccion). */
+  Agentes: { IdAgente: number; Agente: string }[];
 }
 
 /** Key y secreto se muestran una sola vez, juntos. */
@@ -23,11 +25,12 @@ interface Revelado { nombre: string; key: string; secreto: string | null; }
 type Credencial = 'key' | 'secreto';
 
 
-interface Form { Nombre: string; Status: boolean; }
+interface Form { Nombre: string; Status: boolean; Agentes: number[]; }
+interface AgenteOpt { IdAgente: number; Agente: string; Status: number }
 
 /** Se busca por aplicacion, prefijo de la key, cifrado y estado. */
 const coincide = (k: KeyRow, consulta: string) =>
-  coincideTexto(consulta, [k.Nombre, k.KeyPrefijo, k.TieneSecreto ? 'con secreto' : 'sin secreto', k.Status === 1 ? 'activa' : 'inactiva']);
+  coincideTexto(consulta, [k.Nombre, k.KeyPrefijo, k.TieneSecreto ? 'con secreto' : 'sin secreto', k.Status === 1 ? 'activa' : 'inactiva', k.Agentes.length ? k.Agentes.map((a) => a.Agente).join(' ') : 'todos sin restriccion']);
 
 const WS_URL = 'http://localhost:3056';
 const COPIED_MS = 2000;
@@ -41,19 +44,25 @@ export default function KeysPage() {
   const [formError, setFormError] = useState('');
   const [copied, setCopied] = useState<Credencial | null>(null);
   const [busqueda, setBusqueda] = useState('');
+  const [agentes, setAgentes] = useState<AgenteOpt[]>([]);
+  const [filtroAgentes, setFiltroAgentes] = useState('');
 
   const load = useCallback(async () => {
-    const r = await api<KeyRow[]>('/api/keys');
+    const [r, a] = await Promise.all([api<KeyRow[]>('/api/keys'), api<AgenteOpt[]>('/api/agentes')]);
     if (r.success && r.data) setItems(r.data); else setError(r.error || 'No se pudieron cargar las keys');
+    if (a.success && a.data) setAgentes(a.data);
   }, []);
 
   useLoad(load);
 
-  const openNew = () => { setFormError(''); setModal({ id: null, form: { Nombre: '', Status: true } }); };
+  const openNew = () => { setFormError(''); setFiltroAgentes(''); setModal({ id: null, form: { Nombre: '', Status: true, Agentes: [] } }); };
   const openEdit = (k: KeyRow) => {
     setFormError('');
-    setModal({ id: k.IdKey, form: { Nombre: k.Nombre, Status: k.Status === 1 } });
+    setFiltroAgentes('');
+    setModal({ id: k.IdKey, form: { Nombre: k.Nombre, Status: k.Status === 1, Agentes: k.Agentes.map((a) => a.IdAgente) } });
   };
+  const toggleAgente = (id: number) =>
+    setModal((m) => (m ? { ...m, form: { ...m.form, Agentes: m.form.Agentes.includes(id) ? m.form.Agentes.filter((x) => x !== id) : [...m.form.Agentes, id] } } : m));
   const setField = <K extends keyof Form>(key: K, value: Form[K]) =>
     setModal((m) => (m ? { ...m, form: { ...m.form, [key]: value } } : m));
 
@@ -79,7 +88,7 @@ export default function KeysPage() {
     if (!confirm(`¿Regenerar la key y el secreto de "${k.Nombre}"? Los anteriores dejarán de funcionar de inmediato.`)) return;
     const r = await api<{ Key: string; Secreto: string }>(`/api/keys/${k.IdKey}`, {
       method: 'PUT',
-      body: JSON.stringify({ Nombre: k.Nombre, Status: k.Status, Regenerar: true }),
+      body: JSON.stringify({ Nombre: k.Nombre, Status: k.Status, Agentes: k.Agentes.map((a) => a.IdAgente), Regenerar: true }),
     });
     if (r.success && r.data?.Key) { setRevealed({ nombre: k.Nombre, key: r.data.Key, secreto: r.data.Secreto }); load(); }
     else alert(r.error || 'No se pudo regenerar');
@@ -128,15 +137,20 @@ export default function KeysPage() {
       <div className="table-wrap">
         <table className="tbl">
           <thead>
-            <tr><th>Aplicación</th><th>Key</th><th>Cifrado</th><th>Alta</th><th>Último uso</th><th>Estado</th><th></th></tr>
+            <tr><th>Aplicación</th><th>Key</th><th>Agentes permitidos</th><th>Cifrado</th><th>Alta</th><th>Último uso</th><th>Estado</th><th></th></tr>
           </thead>
           <tbody>
-            {items.length === 0 && <tr><td colSpan={7} className="empty">No hay keys registradas.</td></tr>}
-            {items.length > 0 && visibles.length === 0 && <SinCoincidencias consulta={busqueda} columnas={7} />}
+            {items.length === 0 && <tr><td colSpan={8} className="empty">No hay keys registradas.</td></tr>}
+            {items.length > 0 && visibles.length === 0 && <SinCoincidencias consulta={busqueda} columnas={8} />}
             {visibles.map((k) => (
               <tr key={k.IdKey}>
                 <td><strong>{k.Nombre}</strong></td>
                 <td className="mono">{k.KeyPrefijo}…</td>
+                <td>
+                  {k.Agentes.length === 0
+                    ? <span className="badge badge-warn" title="Puede pedir cualquier agente. Restringela a los que use esta app."><ShieldAlert size={12} /> Todos</span>
+                    : <span className="chip-list">{k.Agentes.map((a) => <span key={a.IdAgente} className="chip">{a.Agente}</span>)}</span>}
+                </td>
                 <td>
                   {k.TieneSecreto
                     ? <span className="badge badge-ok">Con secreto</span>
@@ -173,6 +187,27 @@ export default function KeysPage() {
                   <input type="checkbox" checked={modal.form.Status} onChange={(e) => setField('Status', e.target.checked)} />
                   Activa
                 </label>
+              </div>
+              <div className="form-group full">
+                <label>Agentes permitidos</label>
+                <div className="search-box" style={{ marginBottom: '0.4rem' }}>
+                  <input value={filtroAgentes} onChange={(e) => setFiltroAgentes(e.target.value)} placeholder="Filtrar agentes" autoComplete="off" />
+                </div>
+                <div className="check-list">
+                  {agentes.filter((a) => coincideTexto(filtroAgentes, [a.Agente])).map((a) => (
+                    <label key={a.IdAgente} className={`check-item ${modal.form.Agentes.includes(a.IdAgente) ? 'active' : ''}`}>
+                      <input type="checkbox" checked={modal.form.Agentes.includes(a.IdAgente)} onChange={() => toggleAgente(a.IdAgente)} />
+                      <span>{a.Agente}</span>
+                      {a.Status !== 1 && <span className="badge badge-off">inactivo</span>}
+                    </label>
+                  ))}
+                  {agentes.length === 0 && <span className="form-hint">Aún no hay agentes.</span>}
+                </div>
+                <span className="form-hint" style={modal.form.Agentes.length === 0 ? { color: 'var(--warning)' } : undefined}>
+                  {modal.form.Agentes.length === 0
+                    ? 'Sin selección la key puede usar cualquier agente. Si se filtra, expone todas las llaves: marca solo los que use esta aplicación.'
+                    : `Esta key solo podrá pedir ${modal.form.Agentes.length} agente(s); cualquier otro se rechaza con AGENTE_NO_PERMITIDO.`}
+                </span>
               </div>
             </div>
             <div className="form-actions">

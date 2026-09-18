@@ -69,6 +69,8 @@ export default function BitacoraPage() {
             <option value="AGENTE_INACTIVO">Agente inactivo</option>
             <option value="LLAVE_INACTIVA">Llave inactiva</option>
             <option value="CADUCADO">Caducado</option>
+            <option value="AGENTE_NO_PERMITIDO">Agente no permitido</option>
+            <option value="PROVEEDOR_CAMBIADO">Proveedor cambiado</option>
             <option value="ERROR">Error</option>
           </select>
           <select value={limit} onChange={(e) => setLimit(Number(e.target.value))} style={{ width: 'auto' }}>

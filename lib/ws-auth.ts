@@ -24,6 +24,7 @@ export type Resultado =
   | 'LLAVE_INACTIVA'
   | 'CADUCADO'
   | 'PROVEEDOR_CAMBIADO'
+  | 'AGENTE_NO_PERMITIDO'
   | 'ERROR';
 
 export interface KeyRow {
@@ -157,6 +158,16 @@ async function findAgenteByUuid(uuid: string): Promise<AgenteWsRow | undefined> 
   return (rows as AgenteWsRow[])[0];
 }
 
+/**
+ * Agentes a los que la key tiene acceso: null si no tiene restriccion (sin filas en tblKeyAgentes,
+ * como las keys anteriores a este cambio), o el conjunto de IdAgente permitidos.
+ */
+async function agentesPermitidos(idKey: number): Promise<Set<number> | null> {
+  const [rows] = await pool.query('SELECT IdAgente FROM tblKeyAgentes WHERE IdKey = ?', [idKey]);
+  const ids = (rows as { IdAgente: number }[]).map((r) => r.IdAgente);
+  return ids.length ? new Set(ids) : null;
+}
+
 /** Marca la key como usada. Se llama solo cuando la peticion fue atendida. */
 export async function touchKey(idKey: number): Promise<void> {
   await pool.query('UPDATE tblKeys SET UltimoUso = NOW() WHERE IdKey = ?', [idKey]);
@@ -204,6 +215,12 @@ export async function autenticarWs(request: Request, uuidFromPath?: string): Pro
     }
     if (isExpired(agente.FechaCaducidad)) {
       return rechazo(403, 'La llave del agente ya caduco', 'CADUCADO', `Llave "${agente.Llave}" caducada`, agente);
+    }
+
+    /* Una key filtrada solo expone los agentes que le fueron autorizados, no todo el catalogo. */
+    const permitidos = await agentesPermitidos(key.IdKey);
+    if (permitidos && !permitidos.has(agente.IdAgente)) {
+      return rechazo(403, 'Esta key no tiene acceso a ese agente', 'AGENTE_NO_PERMITIDO', `La key "${key.Nombre}" no esta autorizada para el agente "${agente.Agente}"`, agente);
     }
 
     return { ok: true, ctx: { ip, prefijo, key, agente } };
