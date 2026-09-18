@@ -4,6 +4,7 @@ import { hashAccessKey, keyPrefix } from './crypto';
 import { getClientIp, isIpAllowed } from './ip';
 import { isUuid } from './agentes';
 import { isExpired } from './llaves';
+import { hoyClave, inicioDelDia, registrarAlerta } from './alertas';
 
 /**
  * Autenticacion comun de los webservices (/api/ws/llave y /api/ws/proxy):
@@ -25,6 +26,7 @@ export type Resultado =
   | 'CADUCADO'
   | 'PROVEEDOR_CAMBIADO'
   | 'AGENTE_NO_PERMITIDO'
+  | 'PRESUPUESTO'
   | 'ERROR';
 
 export interface KeyRow {
@@ -32,6 +34,9 @@ export interface KeyRow {
   Nombre: string;
   Status: number;
   SecretoCifrado: string | null;
+  /* Topes del dia (DECIMAL llega como texto). NULL = sin tope. */
+  PresupuestoDiarioUsd: number | string | null;
+  MaxLlamadasDia: number | null;
 }
 
 export interface AgenteWsRow {
@@ -39,6 +44,8 @@ export interface AgenteWsRow {
   Uuid: string;
   Agente: string;
   AgenteStatus: number;
+  PresupuestoDiarioUsd: number | string | null;
+  MaxLlamadasDia: number | null;
   Llave: string;
   Proveedor: string;
   Modelo: string;
@@ -126,7 +133,8 @@ export async function logWs(
 export const HL_ERROR_HEADER = 'X-HL-Error';
 
 export function denyWs(status: number, message: string, code?: string): Response {
-  const headers = code ? { [HL_ERROR_HEADER]: code } : undefined;
+  /* x-should-retry: los SDK de Anthropic y OpenAI reintentan el 429; un presupuesto agotado no se arregla reintentando. */
+  const headers: Record<string, string> | undefined = code ? { [HL_ERROR_HEADER]: code, ...(code === 'PRESUPUESTO' ? { 'x-should-retry': 'false' } : {}) } : undefined;
   return NextResponse.json({ success: false, data: null, error: message, code: code ?? null }, { status, headers });
 }
 
@@ -136,7 +144,7 @@ export function errorDetalle(error: unknown): string {
 
 async function findKey(rawKey: string): Promise<KeyRow | undefined> {
   const [rows] = await pool.query(
-    'SELECT IdKey, Nombre, Status, SecretoCifrado FROM tblKeys WHERE KeyHash = ? LIMIT 1',
+    'SELECT IdKey, Nombre, Status, SecretoCifrado, PresupuestoDiarioUsd, MaxLlamadasDia FROM tblKeys WHERE KeyHash = ? LIMIT 1',
     [hashAccessKey(rawKey)]
   );
   return (rows as KeyRow[])[0];
@@ -144,7 +152,7 @@ async function findKey(rawKey: string): Promise<KeyRow | undefined> {
 
 async function findAgenteByUuid(uuid: string): Promise<AgenteWsRow | undefined> {
   const [rows] = await pool.query(
-    `SELECT a.IdAgente, a.Uuid, a.Agente, a.Status AS AgenteStatus,
+    `SELECT a.IdAgente, a.Uuid, a.Agente, a.Status AS AgenteStatus, a.PresupuestoDiarioUsd, a.MaxLlamadasDia,
             l.Llave, l.Proveedor, l.Modelo, l.LlaveEncriptada, l.FechaCaducidad, l.Status AS LlaveStatus,
             r.IdLlave AS RespaldoIdLlave, r.Llave AS RespaldoLlave, r.Proveedor AS RespaldoProveedor, r.Modelo AS RespaldoModelo,
             r.LlaveEncriptada AS RespaldoLlaveEncriptada, r.FechaCaducidad AS RespaldoFechaCaducidad, r.Status AS RespaldoStatus
@@ -168,6 +176,33 @@ async function agentesPermitidos(idKey: number): Promise<Set<number> | null> {
   return ids.length ? new Set(ids) : null;
 }
 
+type DuenoPresupuesto = 'IdKey' | 'IdAgente';
+interface Topes { PresupuestoDiarioUsd: number | string | null; MaxLlamadasDia: number | null }
+
+/** Llamadas atendidas y gasto estimado de hoy (desde medianoche local) de una key o un agente. */
+async function usoDelDia(campo: DuenoPresupuesto, id: number): Promise<{ llamadas: number; costo: number }> {
+  const [rows] = await pool.query(
+    `SELECT IFNULL(SUM(Resultado = 'OK'), 0) AS llamadas, IFNULL(SUM(CostoUsd), 0) AS costo FROM tblBitacora WHERE ${campo} = ? AND Fecha >= ?`,
+    [id, inicioDelDia()]
+  );
+  const r = (rows as { llamadas: unknown; costo: unknown }[])[0];
+  return { llamadas: Number(r?.llamadas ?? 0), costo: Number(r?.costo ?? 0) };
+}
+
+/**
+ * Texto del tope que ya se rebaso hoy, o null si sigue dentro de presupuesto (o no tiene).
+ * Solo consulta la bitacora cuando hay algun tope definido.
+ */
+async function presupuestoRebasado(campo: DuenoPresupuesto, id: number, topes: Topes): Promise<string | null> {
+  const topeUsd = topes.PresupuestoDiarioUsd === null ? 0 : Number(topes.PresupuestoDiarioUsd);
+  const topeLlamadas = topes.MaxLlamadasDia ?? 0;
+  if (!(topeUsd > 0) && !(topeLlamadas > 0)) return null;
+  const uso = await usoDelDia(campo, id);
+  if (topeLlamadas > 0 && uso.llamadas >= topeLlamadas) return `${uso.llamadas} llamadas hoy (tope ${topeLlamadas})`;
+  if (topeUsd > 0 && uso.costo >= topeUsd) return `$${uso.costo.toFixed(4)} USD gastados hoy (tope $${topeUsd.toFixed(2)})`;
+  return null;
+}
+
 /** Marca la key como usada. Se llama solo cuando la peticion fue atendida. */
 export async function touchKey(idKey: number): Promise<void> {
   await pool.query('UPDATE tblKeys SET UltimoUso = NOW() WHERE IdKey = ?', [idKey]);
@@ -187,7 +222,7 @@ export async function autenticarWs(request: Request, uuidFromPath?: string): Pro
   let keyActual: KeyRow | null = null;
   const rechazo = async (status: number, message: string, resultado: Resultado, detalle: string | null, agente: AgenteWsRow | null = null) => {
     await logWs(ip, prefijo, keyActual, agente, resultado, detalle);
-    return { ok: false as const, response: denyWs(status, message) };
+    return { ok: false as const, response: denyWs(status, message, resultado) };
   };
 
   try {
@@ -220,7 +255,32 @@ export async function autenticarWs(request: Request, uuidFromPath?: string): Pro
     /* Una key filtrada solo expone los agentes que le fueron autorizados, no todo el catalogo. */
     const permitidos = await agentesPermitidos(key.IdKey);
     if (permitidos && !permitidos.has(agente.IdAgente)) {
+      void registrarAlerta({
+        tipo: 'ACCESO_NO_PERMITIDO', nivel: 'warn', clave: `nopermitido:${key.IdKey}:${agente.IdAgente}`,
+        titulo: `La aplicación "${key.Nombre}" intentó usar el agente "${agente.Agente}" sin permiso`,
+        detalle: `Desde la IP ${ip}. Si es legítimo, agrega el agente a la key en Keys de acceso; si no, revisa esa aplicación.`,
+      });
       return rechazo(403, 'Esta key no tiene acceso a ese agente', 'AGENTE_NO_PERMITIDO', `La key "${key.Nombre}" no esta autorizada para el agente "${agente.Agente}"`, agente);
+    }
+
+    /* Presupuesto del dia: primero el de la aplicacion (key), luego el del agente. Se avisa una vez al dia. */
+    const topeKey = await presupuestoRebasado('IdKey', key.IdKey, key);
+    if (topeKey) {
+      void registrarAlerta({
+        tipo: 'PRESUPUESTO', nivel: 'warn', clave: `presupuesto:key:${key.IdKey}:${hoyClave()}`,
+        titulo: `La aplicación "${key.Nombre}" agotó su presupuesto de hoy`,
+        detalle: `${topeKey}. Sus llamadas se rechazan con 429 hasta mañana o hasta subir el tope en Keys de acceso.`,
+      });
+      return rechazo(429, 'La aplicacion agoto su presupuesto de hoy', 'PRESUPUESTO', `Key "${key.Nombre}": ${topeKey}`, agente);
+    }
+    const topeAgente = await presupuestoRebasado('IdAgente', agente.IdAgente, agente);
+    if (topeAgente) {
+      void registrarAlerta({
+        tipo: 'PRESUPUESTO', nivel: 'warn', clave: `presupuesto:agente:${agente.IdAgente}:${hoyClave()}`,
+        titulo: `El agente "${agente.Agente}" agotó su presupuesto de hoy`,
+        detalle: `${topeAgente}. Sus llamadas se rechazan con 429 hasta mañana o hasta subir el tope en Agentes.`,
+      });
+      return rechazo(429, 'El agente agoto su presupuesto de hoy', 'PRESUPUESTO', `Agente "${agente.Agente}": ${topeAgente}`, agente);
     }
 
     return { ok: true, ctx: { ip, prefijo, key, agente } };

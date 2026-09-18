@@ -3,7 +3,8 @@ import { apiDeRuta, getUpstream, pedirUsoEnStream, rewriteModelInBody, type Prox
 import { calcularCosto, precioPara } from './precios';
 import { extraerUso, instrumentarRespuesta, registrarUso } from './uso';
 import { providerApi, providerLabel } from './providers';
-import { autenticarWs, denyWs, errorDetalle, llaveRespaldoUtilizable, logWs, touchKey } from './ws-auth';
+import { autenticarWs, denyWs, errorDetalle, llaveRespaldoUtilizable, logWs, touchKey, type AgenteWsRow, type KeyRow } from './ws-auth';
+import { registrarAlerta, revisarGastoDiario } from './alertas';
 
 /**
  * Proxy transparente: /api/ws/proxy/<uuid>/<ruta del proveedor>
@@ -27,6 +28,18 @@ const STRIP_RESPONSE_HEADERS = new Set([
  * Un 400 o 404 es de la peticion: repetirla con otra llave daria lo mismo.
  */
 const REINTENTAR_CON_RESPALDO = new Set([401, 402, 403, 408, 429, 500, 502, 503, 504, 529]);
+/** Con estos el proveedor rechaza la llave en si (revocada o sin saldo): alerta roja. */
+const RECHAZO_DE_LLAVE = new Set([401, 402, 403]);
+const STATUS_SATURADO = 429;
+
+function motivoStatus(status: number): string {
+  if (status === 402) return 'sin saldo';
+  if (RECHAZO_DE_LLAVE.has(status)) return 'llave inválida o revocada';
+  if (status === STATUS_SATURADO) return 'saturado o sin cuota';
+  if (status === 408) return 'tiempo agotado';
+  if (status >= 500) return 'caído';
+  return `respondió ${status}`;
+}
 
 /** Query params de credenciales que algunos SDK agregan y no deben salir. */
 const STRIP_QUERY_PARAMS = ['key'];
@@ -82,6 +95,30 @@ async function enviarAlProveedor(request: Request, method: string, pathSegments:
   });
 }
 
+/** Lo que hace falta de una llamada ya atendida para decidir si amerita alerta. */
+interface ResultadoLlamada { nombreLlave: string; proveedor: string; statusPrimario: number; statusFinal: number; conRespaldo: boolean }
+
+/**
+ * Alertas de tiempo real tras una llamada: se tuvo que usar la llave de respaldo, o el proveedor
+ * rechazo la llave con la que se atendio. No se repiten en 24 h (misma clave).
+ */
+function avisarProveedor(key: KeyRow, agente: AgenteWsRow, r: ResultadoLlamada): void {
+  if (r.conRespaldo) {
+    void registrarAlerta({
+      tipo: 'RESPALDO_USADO', nivel: 'warn', clave: `respaldo:${agente.IdAgente}`,
+      titulo: `El agente "${agente.Agente}" corre con su llave de respaldo "${r.nombreLlave}"`,
+      detalle: `La principal "${agente.Llave}" (${providerLabel(agente.Proveedor)}) respondió ${r.statusPrimario}: ${motivoStatus(r.statusPrimario)}. App "${key.Nombre}". Revisa esa llave en el proveedor.`,
+    });
+  }
+  const nivel = RECHAZO_DE_LLAVE.has(r.statusFinal) ? 'bad' : r.statusFinal === STATUS_SATURADO ? 'warn' : null;
+  if (!nivel) return;
+  void registrarAlerta({
+    tipo: 'PROVEEDOR_RECHAZA', nivel, clave: `rechazo:${r.proveedor}:${r.nombreLlave}:${r.statusFinal}`,
+    titulo: `${providerLabel(r.proveedor)} rechazó la llave "${r.nombreLlave}" (${r.statusFinal}: ${motivoStatus(r.statusFinal)})`,
+    detalle: `Agente "${agente.Agente}", app "${key.Nombre}"${r.conRespaldo ? ', ya con la llave de respaldo' : ''}. Revisa saldo y vigencia de la llave en el proveedor.`,
+  });
+}
+
 export async function proxyRequest(request: Request, uuid: string, pathSegments: string[]): Promise<Response> {
   const inicioMs = Date.now();
   const auth = await autenticarWs(request, uuid);
@@ -116,6 +153,7 @@ export async function proxyRequest(request: Request, uuid: string, pathSegments:
     const body = METHODS_WITH_BODY.has(method) ? await request.text() : undefined;
     let destino: Destino = { upstream, nombre: agente.Llave, proveedor: agente.Proveedor, modelo: agente.Modelo, llaveCifrada: agente.LlaveEncriptada };
     let respuesta = await enviarAlProveedor(request, method, pathSegments, body, destino);
+    const statusPrimario = respuesta.status;
     let conRespaldo = false;
 
     /*
@@ -136,6 +174,7 @@ export async function proxyRequest(request: Request, uuid: string, pathSegments:
     await touchKey(key.IdKey);
     const atendio = conRespaldo ? { ...agente, Llave: destino.nombre, Proveedor: destino.proveedor, Modelo: destino.modelo } : agente;
     const idBitacora = await logWs(ip, prefijo, key, atendio, respuesta.ok ? 'OK' : 'ERROR', `${resumen} · ${respuesta.status}${conRespaldo ? ` · respaldo "${destino.nombre}"` : ''}`);
+    avisarProveedor(key, agente, { nombreLlave: destino.nombre, proveedor: destino.proveedor, statusPrimario, statusFinal: respuesta.status, conRespaldo });
 
     /* Duracion, tokens y gasto: se leen del cuerpo conforme pasa hacia la app, sin retrasarlo. */
     const { proveedor, modelo } = destino;
@@ -145,6 +184,7 @@ export async function proxyRequest(request: Request, uuid: string, pathSegments:
         const tokens = respuesta.ok && !fin.truncado ? extraerUso(fin.cuerpo) : null;
         const precio = tokens ? await precioPara(proveedor, modelo) : null;
         await registrarUso(idBitacora, { duracionMs: fin.duracionMs, tokens, costoUsd: tokens && precio ? calcularCosto(tokens, precio) : null });
+        await revisarGastoDiario();
       })();
     });
 

@@ -3,11 +3,12 @@ import { cleanText, fail, ok, parseStatus, withAuth } from '@/lib/api';
 import { encryptSecret, generateAccessKey, generateSharedSecret, hashAccessKey, keyPrefix } from '@/lib/crypto';
 import { registrarAuditoria } from '@/lib/auditoria';
 import { agentesPorKey, guardarAgentesDeKey, leerAgentes, nombresAgentes, textoAgentes } from './comun';
+import { leerPresupuesto, textoPresupuesto } from '@/lib/presupuesto';
 
 export async function GET() {
   return withAuth(async () => {
     const [rows] = await pool.query(
-      `SELECT IdKey, Nombre, KeyPrefijo, Status, UltimoUso, FechaAlta,
+      `SELECT IdKey, Nombre, KeyPrefijo, Status, UltimoUso, FechaAlta, PresupuestoDiarioUsd, MaxLlamadasDia,
               (SecretoCifrado IS NOT NULL) AS TieneSecreto
        FROM tblKeys ORDER BY Nombre`
     );
@@ -29,18 +30,20 @@ export async function POST(request: Request) {
     if (agentesIds === undefined) return fail('Agentes invalidos');
     const nombres = await nombresAgentes(agentesIds);
     if (nombres.size !== agentesIds.length) return fail('Alguno de los agentes no existe', 404);
+    const presupuesto = leerPresupuesto(body);
+    if (!presupuesto) return fail('Presupuesto diario o tope de llamadas invalido');
 
     const key = generateAccessKey();
     const secreto = generateSharedSecret();
     const [result] = await pool.query(
-      'INSERT INTO tblKeys (Nombre, KeyHash, KeyPrefijo, SecretoCifrado, Status) VALUES (?, ?, ?, ?, ?)',
-      [nombre, hashAccessKey(key), keyPrefix(key), encryptSecret(secreto), parseStatus(body.Status)]
+      'INSERT INTO tblKeys (Nombre, KeyHash, KeyPrefijo, SecretoCifrado, Status, PresupuestoDiarioUsd, MaxLlamadasDia) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [nombre, hashAccessKey(key), keyPrefix(key), encryptSecret(secreto), parseStatus(body.Status), presupuesto.PresupuestoDiarioUsd, presupuesto.MaxLlamadasDia]
     );
     const insertId = (result as { insertId: number }).insertId;
     await guardarAgentesDeKey(insertId, agentesIds);
     await registrarAuditoria({
       user, request, accion: 'CREAR', entidad: 'key', idEntidad: insertId, nombre,
-      despues: { Nombre: nombre, Status: parseStatus(body.Status), Agentes: textoAgentes([...nombres.values()]) }, detalle: `Key ${keyPrefix(key)}…`,
+      despues: { Nombre: nombre, Status: parseStatus(body.Status), Agentes: textoAgentes([...nombres.values()]), Presupuesto: textoPresupuesto(presupuesto) }, detalle: `Key ${keyPrefix(key)}…`,
     });
     return ok({ IdKey: insertId, Key: key, Secreto: secreto }, 201);
   });

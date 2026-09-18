@@ -190,6 +190,16 @@ code, .mono { font-family: var(--font-mono); font-size: 0.84em; }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
 .btn-icon { display: inline-grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: var(--r-sm); color: var(--text-muted); }
 .btn-icon:hover { background: var(--surface-2); color: var(--text); }
+.bell { position: relative; }
+.bell-badge {
+  position: absolute; top: 3px; right: 1px; min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 999px; background: #ef4444; color: #fff;
+  font-family: var(--font-mono); font-size: 0.62rem; font-weight: 800; line-height: 17px; text-align: center;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.presupuesto-tag { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.74rem; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; }
+.alerta-nueva td:first-child { box-shadow: inset 3px 0 0 var(--indigo); }
+.alerta-leida { opacity: 0.68; }
 
 /* ─── TABLE ─── */
 .table-wrap { overflow-x: auto; border-radius: var(--r-lg); border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow); }

@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS `tblAgentes` (
   `IdLlave`           INT NOT NULL COMMENT 'llave (proveedor + modelo) que ejecuta este agente',
   `IdLlaveRespaldo`   INT NULL COMMENT 'llave con la que el proxy reintenta si la principal falla (mismo API)',
   `Status`            INT NOT NULL DEFAULT 1,
+  `PresupuestoDiarioUsd` DECIMAL(10,2) NULL COMMENT 'gasto maximo por dia; NULL = sin tope',
+  `MaxLlamadasDia`       INT           NULL COMMENT 'llamadas aceptadas por dia; NULL = sin tope',
   `FechaAlta`         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `FechaModificacion` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`IdAgente`),
@@ -76,6 +78,8 @@ CREATE TABLE IF NOT EXISTS `tblKeys` (
   `KeyPrefijo` VARCHAR(12) NOT NULL COMMENT 'primeros caracteres para identificarla',
   `SecretoCifrado` TEXT NULL COMMENT 'secreto compartido cifrado con MASTER_KEY; con el se cifra la llave en la respuesta del webservice',
   `Status`     INT NOT NULL DEFAULT 1,
+  `PresupuestoDiarioUsd` DECIMAL(10,2) NULL COMMENT 'gasto maximo por dia; NULL = sin tope',
+  `MaxLlamadasDia`       INT           NULL COMMENT 'llamadas aceptadas por dia; NULL = sin tope',
   `UltimoUso`  DATETIME NULL,
   `FechaAlta`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`IdKey`),
@@ -104,7 +108,7 @@ CREATE TABLE IF NOT EXISTS `tblBitacora` (
   `IdAgente`   INT NULL,
   `Proveedor`  VARCHAR(30)  NULL COMMENT 'proveedor de la llave del agente al momento de la llamada',
   `Modelo`     VARCHAR(100) NULL COMMENT 'modelo de la llave del agente al momento de la llamada',
-  `Resultado`  VARCHAR(20) NOT NULL COMMENT 'OK | IP_BLOQUEADA | KEY_INVALIDA | AGENTE_INVALIDO | AGENTE_INACTIVO | LLAVE_INACTIVA | CADUCADO | PROVEEDOR_CAMBIADO | AGENTE_NO_PERMITIDO | ERROR',
+  `Resultado`  VARCHAR(20) NOT NULL COMMENT 'OK | IP_BLOQUEADA | KEY_INVALIDA | AGENTE_INVALIDO | AGENTE_INACTIVO | LLAVE_INACTIVA | CADUCADO | PROVEEDOR_CAMBIADO | AGENTE_NO_PERMITIDO | PRESUPUESTO | ERROR',
   `Detalle`    VARCHAR(200) NULL,
   `DuracionMs`           INT           NULL COMMENT 'ms desde que llego la peticion hasta que termino la respuesta del proveedor',
   `TokensEntrada`        INT           NULL COMMENT 'tokens de entrada a precio completo (sin cache)',
@@ -113,7 +117,9 @@ CREATE TABLE IF NOT EXISTS `tblBitacora` (
   `TokensCacheEscritura` INT           NULL,
   `CostoUsd`             DECIMAL(12,6) NULL COMMENT 'gasto estimado en USD segun tblPrecios; NULL si el modelo no tiene precio',
   PRIMARY KEY (`IdBitacora`),
-  KEY `ix_fecha` (`Fecha`)
+  KEY `ix_fecha` (`Fecha`),
+  KEY `ix_bitacora_key_fecha` (`IdKey`, `Fecha`),
+  KEY `ix_bitacora_agente_fecha` (`IdAgente`, `Fecha`)
 ) ENGINE = InnoDB;
 
 -- ── 5c. Agentes permitidos por key (sin filas = todos) ──────────────
@@ -196,3 +202,21 @@ INSERT IGNORE INTO `tblIPsPermitidas` (`IP`, `Descripcion`) VALUES
 -- Usuario inicial del portal:  admin / admin123   (cámbialo después de entrar)
 INSERT IGNORE INTO `tblUsuarios` (`Usuario`, `Login`, `Password`) VALUES
   ('Administrador', 'admin', '$2b$10$kxgs0ranbii4yPv0pVR7R.EGpvbFd5MB8.L7PVGSioE2cXFra/q.W');
+
+-- ── Alertas del sistema (portal + webhook o correo opcional) ─────────
+CREATE TABLE IF NOT EXISTS `tblAlertas` (
+  `IdAlerta` INT NOT NULL AUTO_INCREMENT,
+  `Fecha`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `Tipo`     VARCHAR(30)  NOT NULL COMMENT 'LLAVE_CADUCADA | LLAVE_POR_CADUCAR | PROVEEDOR_RECHAZA | RESPALDO_USADO | PRESUPUESTO | GASTO_DIARIO | ACCESO_NO_PERMITIDO',
+  `Nivel`    VARCHAR(10)  NOT NULL COMMENT 'info | warn | bad',
+  `Titulo`   VARCHAR(160) NOT NULL,
+  `Detalle`  VARCHAR(500) NULL,
+  `Clave`    VARCHAR(120) NOT NULL COMMENT 'identidad del aviso: no se repite el mismo en 24 h',
+  `Leida`    TINYINT(1)   NOT NULL DEFAULT 0,
+  `Enviada`  TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 si salio por webhook o correo',
+  `Canal`    VARCHAR(60)  NULL COMMENT 'por donde se envio, o el error',
+  PRIMARY KEY (`IdAlerta`),
+  KEY `ix_alertas_fecha` (`Fecha`),
+  KEY `ix_alertas_clave` (`Clave`, `Fecha`),
+  KEY `ix_alertas_leida` (`Leida`)
+) ENGINE = InnoDB;

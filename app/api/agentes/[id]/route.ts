@@ -4,6 +4,7 @@ import { cleanText, fail, ok, parseId, parseStatus, withAuth } from '@/lib/api';
 import { AGENTES_LIST_SQL, type AgenteRow } from '@/lib/agentes';
 import { registrarAuditoria } from '@/lib/auditoria';
 import { instantaneaAgente, leerRespaldo, nombresLlaves } from '../comun';
+import { leerPresupuesto } from '@/lib/presupuesto';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -24,6 +25,8 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
     if (!agente || !idLlave) return fail('Nombre del agente y Llave son requeridos');
     const respaldo = leerRespaldo(body.IdLlaveRespaldo, idLlave);
     if (respaldo === undefined) return fail('La llave de respaldo debe ser distinta de la principal');
+    const presupuesto = leerPresupuesto(body);
+    if (!presupuesto) return fail('Presupuesto diario o tope de llamadas invalido');
 
     const nombres = await nombresLlaves([idLlave, respaldo]);
     if (!nombres.has(idLlave)) return fail('La llave no existe', 404);
@@ -34,13 +37,13 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
 
     const status = parseStatus(body.Status);
     await pool.query(
-      'UPDATE tblAgentes SET Agente = ?, IdLlave = ?, IdLlaveRespaldo = ?, Status = ? WHERE IdAgente = ?',
-      [agente, idLlave, respaldo, status, id]
+      'UPDATE tblAgentes SET Agente = ?, IdLlave = ?, IdLlaveRespaldo = ?, Status = ?, PresupuestoDiarioUsd = ?, MaxLlamadasDia = ? WHERE IdAgente = ?',
+      [agente, idLlave, respaldo, status, presupuesto.PresupuestoDiarioUsd, presupuesto.MaxLlamadasDia, id]
     );
     await registrarAuditoria({
       user, request, accion: 'EDITAR', entidad: 'agente', idEntidad: id, nombre: agente,
       antes: instantaneaAgente(antes),
-      despues: instantaneaAgente({ Agente: agente, Llave: nombres.get(idLlave) ?? '', LlaveRespaldo: respaldo ? nombres.get(respaldo) ?? null : null, Status: status }),
+      despues: instantaneaAgente({ Agente: agente, Llave: nombres.get(idLlave) ?? '', LlaveRespaldo: respaldo ? nombres.get(respaldo) ?? null : null, Status: status, ...presupuesto }),
     });
     return ok({ IdAgente: id });
   });

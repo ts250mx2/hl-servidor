@@ -2,11 +2,12 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useLoad } from '@/lib/hooks';
-import { Copy, KeyRound, Pencil, Plus, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react';
+import { Copy, KeyRound, Pencil, Plus, RefreshCw, ShieldAlert, Trash2, Wallet } from 'lucide-react';
 import Modal from '@/components/Modal';
 import SearchBar, { SinCoincidencias } from '@/components/SearchBar';
 import { coincideTexto } from '@/lib/buscar';
 import { api, fmtDate } from '@/lib/client';
+import { normalizarPresupuesto, textoPresupuesto } from '@/lib/presupuesto';
 
 interface KeyRow {
   IdKey: number;
@@ -18,6 +19,8 @@ interface KeyRow {
   TieneSecreto: number;
   /** Agentes que puede usar; vacio = todos (sin restriccion). */
   Agentes: { IdAgente: number; Agente: string }[];
+  PresupuestoDiarioUsd: number | string | null;
+  MaxLlamadasDia: number | null;
 }
 
 /** Key y secreto se muestran una sola vez, juntos. */
@@ -25,14 +28,31 @@ interface Revelado { nombre: string; key: string; secreto: string | null; }
 type Credencial = 'key' | 'secreto';
 
 
-interface Form { Nombre: string; Status: boolean; Agentes: number[]; }
+interface Form { Nombre: string; Status: boolean; Agentes: number[]; PresupuestoDiarioUsd: string; MaxLlamadasDia: string; }
 interface AgenteOpt { IdAgente: number; Agente: string; Status: number }
 
 /** Se busca por aplicacion, prefijo de la key, cifrado y estado. */
 const coincide = (k: KeyRow, consulta: string) =>
-  coincideTexto(consulta, [k.Nombre, k.KeyPrefijo, k.TieneSecreto ? 'con secreto' : 'sin secreto', k.Status === 1 ? 'activa' : 'inactiva', k.Agentes.length ? k.Agentes.map((a) => a.Agente).join(' ') : 'todos sin restriccion']);
+  coincideTexto(consulta, [k.Nombre, k.KeyPrefijo, k.TieneSecreto ? 'con secreto' : 'sin secreto', k.Status === 1 ? 'activa' : 'inactiva', k.Agentes.length ? k.Agentes.map((a) => a.Agente).join(' ') : 'todos sin restriccion', textoPresupuesto(normalizarPresupuesto(k))]);
 
 const WS_URL = 'http://localhost:3056';
+
+interface Topes { PresupuestoDiarioUsd: number | string | null; MaxLlamadasDia: number | null }
+
+/** Los topes como texto para los inputs; vacio = sin tope. */
+const topesAFormulario = (t: Topes) => ({
+  PresupuestoDiarioUsd: t.PresupuestoDiarioUsd === null ? '' : String(Number(t.PresupuestoDiarioUsd)),
+  MaxLlamadasDia: t.MaxLlamadasDia === null ? '' : String(t.MaxLlamadasDia),
+});
+
+/** Topes del dia de la key; sin tope va en ambar: una key filtrada podria gastar sin limite. */
+function PresupuestoCelda({ topes }: { topes: Topes }) {
+  const p = normalizarPresupuesto(topes);
+  if (p.PresupuestoDiarioUsd === null && p.MaxLlamadasDia === null) {
+    return <span className="badge badge-warn" title="Sin tope diario: ponle presupuesto o máximo de llamadas por día"><Wallet size={12} /> Sin tope</span>;
+  }
+  return <span className="presupuesto-tag" title="Al rebasarlo, el webservice y el proxy responden 429 PRESUPUESTO hasta el día siguiente"><Wallet size={12} /> {textoPresupuesto(p)}</span>;
+}
 const COPIED_MS = 2000;
 
 export default function KeysPage() {
@@ -55,11 +75,11 @@ export default function KeysPage() {
 
   useLoad(load);
 
-  const openNew = () => { setFormError(''); setFiltroAgentes(''); setModal({ id: null, form: { Nombre: '', Status: true, Agentes: [] } }); };
+  const openNew = () => { setFormError(''); setFiltroAgentes(''); setModal({ id: null, form: { Nombre: '', Status: true, Agentes: [], PresupuestoDiarioUsd: '', MaxLlamadasDia: '' } }); };
   const openEdit = (k: KeyRow) => {
     setFormError('');
     setFiltroAgentes('');
-    setModal({ id: k.IdKey, form: { Nombre: k.Nombre, Status: k.Status === 1, Agentes: k.Agentes.map((a) => a.IdAgente) } });
+    setModal({ id: k.IdKey, form: { Nombre: k.Nombre, Status: k.Status === 1, Agentes: k.Agentes.map((a) => a.IdAgente), ...topesAFormulario(k) } });
   };
   const toggleAgente = (id: number) =>
     setModal((m) => (m ? { ...m, form: { ...m.form, Agentes: m.form.Agentes.includes(id) ? m.form.Agentes.filter((x) => x !== id) : [...m.form.Agentes, id] } } : m));
@@ -88,7 +108,7 @@ export default function KeysPage() {
     if (!confirm(`¿Regenerar la key y el secreto de "${k.Nombre}"? Los anteriores dejarán de funcionar de inmediato.`)) return;
     const r = await api<{ Key: string; Secreto: string }>(`/api/keys/${k.IdKey}`, {
       method: 'PUT',
-      body: JSON.stringify({ Nombre: k.Nombre, Status: k.Status, Agentes: k.Agentes.map((a) => a.IdAgente), Regenerar: true }),
+      body: JSON.stringify({ Nombre: k.Nombre, Status: k.Status, Agentes: k.Agentes.map((a) => a.IdAgente), ...topesAFormulario(k), Regenerar: true }),
     });
     if (r.success && r.data?.Key) { setRevealed({ nombre: k.Nombre, key: r.data.Key, secreto: r.data.Secreto }); load(); }
     else alert(r.error || 'No se pudo regenerar');
@@ -137,11 +157,11 @@ export default function KeysPage() {
       <div className="table-wrap">
         <table className="tbl">
           <thead>
-            <tr><th>Aplicación</th><th>Key</th><th>Agentes permitidos</th><th>Cifrado</th><th>Alta</th><th>Último uso</th><th>Estado</th><th></th></tr>
+            <tr><th>Aplicación</th><th>Key</th><th>Agentes permitidos</th><th>Presupuesto</th><th>Cifrado</th><th>Alta</th><th>Último uso</th><th>Estado</th><th></th></tr>
           </thead>
           <tbody>
-            {items.length === 0 && <tr><td colSpan={8} className="empty">No hay keys registradas.</td></tr>}
-            {items.length > 0 && visibles.length === 0 && <SinCoincidencias consulta={busqueda} columnas={8} />}
+            {items.length === 0 && <tr><td colSpan={9} className="empty">No hay keys registradas.</td></tr>}
+            {items.length > 0 && visibles.length === 0 && <SinCoincidencias consulta={busqueda} columnas={9} />}
             {visibles.map((k) => (
               <tr key={k.IdKey}>
                 <td><strong>{k.Nombre}</strong></td>
@@ -151,6 +171,7 @@ export default function KeysPage() {
                     ? <span className="badge badge-warn" title="Puede pedir cualquier agente. Restringela a los que use esta app."><ShieldAlert size={12} /> Todos</span>
                     : <span className="chip-list">{k.Agentes.map((a) => <span key={a.IdAgente} className="chip">{a.Agente}</span>)}</span>}
                 </td>
+                <td><PresupuestoCelda topes={k} /></td>
                 <td>
                   {k.TieneSecreto
                     ? <span className="badge badge-ok">Con secreto</span>
@@ -187,6 +208,15 @@ export default function KeysPage() {
                   <input type="checkbox" checked={modal.form.Status} onChange={(e) => setField('Status', e.target.checked)} />
                   Activa
                 </label>
+              </div>
+              <div className="form-group">
+                <label>Presupuesto diario (USD)</label>
+                <input type="number" min={0} step="0.01" value={modal.form.PresupuestoDiarioUsd} onChange={(e) => setField('PresupuestoDiarioUsd', e.target.value)} placeholder="Sin tope" />
+              </div>
+              <div className="form-group full">
+                <label>Máximo de llamadas por día</label>
+                <input type="number" min={0} step={1} value={modal.form.MaxLlamadasDia} onChange={(e) => setField('MaxLlamadasDia', e.target.value)} placeholder="Sin tope" />
+                <span className="form-hint">Al rebasar cualquiera de los dos, esta aplicación recibe 429 PRESUPUESTO hasta el día siguiente y se genera una alerta. Vacío = sin tope.</span>
               </div>
               <div className="form-group full">
                 <label>Agentes permitidos</label>

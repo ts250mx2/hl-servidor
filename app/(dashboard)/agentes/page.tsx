@@ -1,8 +1,9 @@
 'use client';
 
+import { normalizarPresupuesto, textoPresupuesto } from '@/lib/presupuesto';
 import { useCallback, useMemo, useState } from 'react';
 import { useLoad } from '@/lib/hooks';
-import { Bot, Check, Copy, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Bot, Check, Copy, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
 import Modal from '@/components/Modal';
 import SearchBar, { SinCoincidencias } from '@/components/SearchBar';
 import SearchSelect from '@/components/SearchSelect';
@@ -27,12 +28,17 @@ interface Agente {
   LlaveRespaldo: string | null;
   ProveedorRespaldo: string | null;
   ModeloRespaldo: string | null;
+  PresupuestoDiarioUsd: number | string | null;
+  MaxLlamadasDia: number | null;
 }
 
 interface LlaveOpt { IdLlave: number; Llave: string; Proveedor: string; Modelo: string; Status: number; }
-interface Form { Agente: string; IdLlave: number; IdLlaveRespaldo: number; Status: boolean; }
+interface Form { Agente: string; IdLlave: number; IdLlaveRespaldo: number; Status: boolean; PresupuestoDiarioUsd: string; MaxLlamadasDia: string; }
 
 const COPIED_MS = 1800;
+
+const tienePresupuesto = (a: { PresupuestoDiarioUsd: number | string | null; MaxLlamadasDia: number | null }) =>
+  a.PresupuestoDiarioUsd !== null || a.MaxLlamadasDia !== null;
 
 function UuidCell({ uuid, full = false }: { uuid: string; full?: boolean }) {
   const [copied, setCopied] = useState(false);
@@ -95,11 +101,11 @@ export default function AgentesPage() {
 
   const openNew = () => {
     setFormError('');
-    setModal({ id: null, uuid: null, form: { Agente: '', IdLlave: 0, IdLlaveRespaldo: 0, Status: true } });
+    setModal({ id: null, uuid: null, form: { Agente: '', IdLlave: 0, IdLlaveRespaldo: 0, Status: true, PresupuestoDiarioUsd: '', MaxLlamadasDia: '' } });
   };
   const openEdit = (a: Agente) => {
     setFormError('');
-    setModal({ id: a.IdAgente, uuid: a.Uuid, form: { Agente: a.Agente, IdLlave: a.IdLlave, IdLlaveRespaldo: a.IdLlaveRespaldo ?? 0, Status: a.Status === 1 } });
+    setModal({ id: a.IdAgente, uuid: a.Uuid, form: { Agente: a.Agente, IdLlave: a.IdLlave, IdLlaveRespaldo: a.IdLlaveRespaldo ?? 0, Status: a.Status === 1, PresupuestoDiarioUsd: a.PresupuestoDiarioUsd === null ? '' : String(Number(a.PresupuestoDiarioUsd)), MaxLlamadasDia: a.MaxLlamadasDia === null ? '' : String(a.MaxLlamadasDia) } });
   };
   const setField = <K extends keyof Form>(key: K, value: Form[K]) =>
     setModal((m) => (m ? { ...m, form: { ...m.form, [key]: value } } : m));
@@ -178,6 +184,7 @@ export default function AgentesPage() {
                 <td>
                   {a.Llave}
                   {a.LlaveRespaldo && <div className="respaldo-tag" title={`Si la principal falla, el proxy reintenta con ${a.LlaveRespaldo} (${a.ModeloRespaldo})`}>↻ respaldo: {a.LlaveRespaldo}</div>}
+                  {tienePresupuesto(a) && <div className="presupuesto-tag" title="Al rebasarlo, las llamadas de este agente reciben 429 PRESUPUESTO hasta el día siguiente"><Wallet size={12} /> {textoPresupuesto(normalizarPresupuesto(a))}</div>}
                 </td>
                 <td><span className="pbadge"><ProviderBadge id={a.Proveedor} short /><code style={{ color: 'var(--text-muted)' }}>{a.Modelo}</code></span></td>
                 <td>{fmtDate(a.FechaModificacion)}</td>
@@ -243,6 +250,15 @@ export default function AgentesPage() {
                   <input type="checkbox" checked={modal.form.Status} onChange={(e) => setField('Status', e.target.checked)} />
                   Activo
                 </label>
+              </div>
+              <div className="form-group">
+                <label>Presupuesto diario (USD)</label>
+                <input type="number" min={0} step="0.01" value={modal.form.PresupuestoDiarioUsd} onChange={(e) => setField('PresupuestoDiarioUsd', e.target.value)} placeholder="Sin tope" />
+              </div>
+              <div className="form-group full">
+                <label>Máximo de llamadas por día</label>
+                <input type="number" min={0} step={1} value={modal.form.MaxLlamadasDia} onChange={(e) => setField('MaxLlamadasDia', e.target.value)} placeholder="Sin tope" />
+                <span className="form-hint">Gasto estimado según Precios y llamadas atendidas desde la medianoche. Al rebasar cualquiera, las apps reciben 429 PRESUPUESTO hasta el día siguiente y se genera una alerta. Vacío = sin tope.</span>
               </div>
             </div>
             <div className="form-actions">

@@ -53,7 +53,7 @@ function resumenDetalle(l: Llamada): string {
 
 function claseResultado(r: string): string {
   if (r === 'OK') return 'ok';
-  if (r === 'CADUCADO' || r === 'AGENTE_INACTIVO' || r === 'LLAVE_INACTIVA' || r === 'PROVEEDOR_CAMBIADO') return 'warn';
+  if (r === 'CADUCADO' || r === 'AGENTE_INACTIVO' || r === 'LLAVE_INACTIVA' || r === 'PROVEEDOR_CAMBIADO' || r === 'PRESUPUESTO') return 'warn';
   return 'bad';
 }
 

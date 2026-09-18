@@ -216,3 +216,28 @@ En **Estadísticas** la métrica se elige arriba: llamadas, gasto, tokens o late
 ## Agentes permitidos por key
 
 Cada key de acceso puede restringirse a los agentes que usa su aplicación (**Acceso → Keys**, lista de agentes). Sin selección la key puede pedir cualquier agente, como antes; con selección, el webservice y el proxy rechazan los demás con `403` y resultado `AGENTE_NO_PERMITIDO` en la bitácora. Conviene restringir todas: si una key se filtra, solo expone las llaves de sus agentes. El resumen cuenta las keys sin restricción. Migración: `db/migracion-key-agentes.sql`.
+
+## Alertas y presupuestos
+
+**Presupuesto por key y por agente** (formularios de Keys y de Agentes): gasto máximo en USD por día y máximo de llamadas por día; vacío = sin tope. El día corre desde la medianoche del servidor; el gasto es el estimado según **Precios** y las llamadas son las atendidas (`OK`). Al rebasar cualquiera, el webservice y el proxy responden `429` con código `PRESUPUESTO` (header `X-HL-Error`, y `x-should-retry: false` para que los SDK no reintenten) hasta el día siguiente o hasta subir el tope. Primero se revisa el tope de la key y luego el del agente. Un modelo sin precio no suma gasto: ponle también tope de llamadas.
+
+**Alertas** (**Monitoreo → Alertas** y la campana de la cabecera). HL las genera solo:
+
+| Tipo | Cuándo |
+|---|---|
+| Proveedor rechazó la llave | El proveedor contestó 401/402/403 (llave inválida o sin saldo) o 429 |
+| Respaldo en acción | El proxy tuvo que atender con la llave de respaldo |
+| Presupuesto agotado | Una key o un agente llegó a su tope del día |
+| Acceso no permitido | Una key pidió un agente que no tiene autorizado |
+| Gasto del día | El gasto total rebasó `ALERTAS_GASTO_DIARIO_USD` |
+| Llave caducada / por caducar | Revisión programada: caducadas y las que caducan en 15 días |
+
+El mismo aviso no se repite en 24 horas. Las de caducidad salen de `npm run alertas:revisar` (o el botón **Revisar ahora**); prográmalo a diario:
+
+```bash
+pm2 start npm --name hl-alertas --cron "0 8 * * *" --no-autorestart -- run alertas:revisar
+```
+
+Para recibirlas fuera del portal configura en el `.env` un webhook (`ALERTAS_WEBHOOK_URL`, recibe JSON con `tipo`, `nivel`, `titulo`, `detalle`, `fecha`) y/o correo SMTP (`ALERTAS_SMTP_*`, `ALERTAS_CORREO_DE`, `ALERTAS_CORREO_A`). La columna **Envío** de la página muestra por dónde salió cada una o el error del canal.
+
+Migración: `db/migracion-alertas-presupuesto.sql`. **Aplícala antes de desplegar este código**: la autenticación del webservice ya lee las columnas nuevas.

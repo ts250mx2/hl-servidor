@@ -7,6 +7,7 @@ import { useTheme } from './ThemeProvider';
 import { useSidebar } from './SidebarContext';
 import { api } from '@/lib/client';
 import styles from './Header.module.css';
+import AlertBell from './AlertBell';
 
 interface Me {
   Usuario: string;
@@ -17,6 +18,7 @@ const TITLES: Record<string, string> = {
   '/llaves': 'Llaves de API',
   '/agentes': 'Agentes',
   '/precios': 'Precios por modelo',
+  '/alertas': 'Alertas',
   '/keys': 'Keys de acceso',
   '/ips': 'IPs permitidas',
   '/usuarios': 'Usuarios',
@@ -73,6 +75,7 @@ export default function Header() {
           <span className={styles.avatar}>{me ? initials(me.Usuario) : '·'}</span>
           <span>{me?.Usuario ?? '...'}</span>
         </div>
+        <AlertBell />
         <button className="btn-icon" onClick={toggle} aria-label="Cambiar tema" title="Cambiar tema">
           {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
         </button>

@@ -8,6 +8,8 @@ export interface AgenteRow {
   IdLlave: number;
   IdLlaveRespaldo: number | null;
   Status: number;
+  PresupuestoDiarioUsd: number | string | null;
+  MaxLlamadasDia: number | null;
   FechaAlta: Date;
   FechaModificacion: Date;
   Llave: string;
@@ -21,7 +23,7 @@ export interface AgenteRow {
 }
 
 export const AGENTES_LIST_SQL = `
-  SELECT a.IdAgente, a.Uuid, a.Agente, a.IdLlave, a.IdLlaveRespaldo, a.Status, a.FechaAlta, a.FechaModificacion,
+  SELECT a.IdAgente, a.Uuid, a.Agente, a.IdLlave, a.IdLlaveRespaldo, a.Status, a.PresupuestoDiarioUsd, a.MaxLlamadasDia, a.FechaAlta, a.FechaModificacion,
          l.Llave, l.Proveedor, l.Modelo, l.Status AS LlaveStatus, l.FechaCaducidad,
          r.Llave AS LlaveRespaldo, r.Proveedor AS ProveedorRespaldo, r.Modelo AS ModeloRespaldo
   FROM tblAgentes a

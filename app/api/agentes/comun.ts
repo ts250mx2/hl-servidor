@@ -1,6 +1,7 @@
 import pool from '@/lib/db';
 import { parseId } from '@/lib/api';
 import type { Instantanea } from '@/lib/auditoria';
+import { normalizarPresupuesto, textoPresupuesto } from '@/lib/presupuesto';
 
 /**
  * Llave de respaldo del cuerpo: null si no viene, undefined si es invalida
@@ -27,8 +28,10 @@ export interface AgenteAuditable {
   Llave: string;
   LlaveRespaldo: string | null;
   Status: number;
+  PresupuestoDiarioUsd: number | string | null;
+  MaxLlamadasDia: number | null;
 }
 
 export function instantaneaAgente(a: AgenteAuditable): Instantanea {
-  return { Agente: a.Agente, LlaveNombre: a.Llave, LlaveRespaldo: a.LlaveRespaldo, Status: a.Status };
+  return { Agente: a.Agente, LlaveNombre: a.Llave, LlaveRespaldo: a.LlaveRespaldo, Status: a.Status, Presupuesto: textoPresupuesto(normalizarPresupuesto(a)) };
 }

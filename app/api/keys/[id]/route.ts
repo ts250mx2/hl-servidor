@@ -4,11 +4,12 @@ import { cleanText, fail, ok, parseId, parseStatus, withAuth } from '@/lib/api';
 import { encryptSecret, generateAccessKey, generateSharedSecret, hashAccessKey, keyPrefix } from '@/lib/crypto';
 import { registrarAuditoria } from '@/lib/auditoria';
 import { agentesPorKey, guardarAgentesDeKey, leerAgentes, nombresAgentes, textoAgentes } from '../comun';
+import { leerPresupuesto, normalizarPresupuesto, textoPresupuesto } from '@/lib/presupuesto';
 
-interface KeyAuditable { Nombre: string; Status: number; KeyPrefijo: string }
+interface KeyAuditable { Nombre: string; Status: number; KeyPrefijo: string; PresupuestoDiarioUsd: number | string | null; MaxLlamadasDia: number | null }
 
 async function keyActual(id: number): Promise<KeyAuditable | undefined> {
-  const [rows] = await pool.query('SELECT Nombre, Status, KeyPrefijo FROM tblKeys WHERE IdKey = ?', [id]);
+  const [rows] = await pool.query('SELECT Nombre, Status, KeyPrefijo, PresupuestoDiarioUsd, MaxLlamadasDia FROM tblKeys WHERE IdKey = ?', [id]);
   return (rows as KeyAuditable[])[0];
 }
 
@@ -28,14 +29,16 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
     if (agentesIds === undefined) return fail('Agentes invalidos');
     const nombres = await nombresAgentes(agentesIds);
     if (nombres.size !== agentesIds.length) return fail('Alguno de los agentes no existe', 404);
+    const presupuesto = leerPresupuesto(body);
+    if (!presupuesto) return fail('Presupuesto diario o tope de llamadas invalido');
 
     const antes = await keyActual(id);
     if (!antes) return fail('Key no encontrada', 404);
     const agentesAntes = (await agentesPorKey()).get(id) ?? [];
 
     const status = parseStatus(body.Status);
-    const fields = ['Nombre = ?', 'Status = ?'];
-    const values: unknown[] = [nombre, status];
+    const fields = ['Nombre = ?', 'Status = ?', 'PresupuestoDiarioUsd = ?', 'MaxLlamadasDia = ?'];
+    const values: unknown[] = [nombre, status, presupuesto.PresupuestoDiarioUsd, presupuesto.MaxLlamadasDia];
     const newKey = body.Regenerar === true ? generateAccessKey() : null;
     const newSecret = newKey ? generateSharedSecret() : null;
     if (newKey && newSecret) {
@@ -52,8 +55,8 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
     await guardarAgentesDeKey(id, agentesIds);
     await registrarAuditoria({
       user, request, accion: newKey ? 'REGENERAR' : 'EDITAR', entidad: 'key', idEntidad: id, nombre,
-      antes: { Nombre: antes.Nombre, Status: antes.Status, Agentes: textoAgentes(agentesAntes.map((a) => a.Agente)) },
-      despues: { Nombre: nombre, Status: status, Agentes: textoAgentes([...nombres.values()]) },
+      antes: { Nombre: antes.Nombre, Status: antes.Status, Agentes: textoAgentes(agentesAntes.map((a) => a.Agente)), Presupuesto: textoPresupuesto(normalizarPresupuesto(antes)) },
+      despues: { Nombre: nombre, Status: status, Agentes: textoAgentes([...nombres.values()]), Presupuesto: textoPresupuesto(presupuesto) },
       detalle: newKey ? `Key y secreto nuevos (${antes.KeyPrefijo}… -> ${keyPrefix(newKey)}…)` : null,
     });
     return ok({ IdKey: id, Key: newKey, Secreto: newSecret });
