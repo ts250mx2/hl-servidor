@@ -68,17 +68,33 @@ export default function LiveConsole() {
     pausadoRef.current = pausado;
   }, [pausado]);
 
+  /* Llamadas ya mostradas cuya respuesta seguia en curso: se vuelven a pedir hasta que traigan duracion. */
+  const pendientes = useRef<number[]>([]);
+
   const traer = useCallback(async () => {
-    const consulta = ultimoId.current ? `/api/bitacora?despues=${ultimoId.current}&limit=100` : `/api/bitacora?limit=${CARGA_INICIAL}`;
+    const ids = pendientes.current;
+    const consulta = ultimoId.current
+      ? `/api/bitacora?despues=${ultimoId.current}&limit=100${ids.length ? `&pendientes=${ids.join(',')}` : ''}`
+      : `/api/bitacora?limit=${CARGA_INICIAL}`;
     const r = await api<Llamada[]>(consulta);
     if (!r.success || !r.data) { setConectado(false); return; }
     setConectado(true);
     // La carga inicial llega de la mas reciente a la mas antigua; la consola va al reves, como tail -f.
-    const nuevas = ultimoId.current ? r.data : [...r.data].reverse();
-    if (nuevas.length === 0) return;
-    ultimoId.current = Math.max(ultimoId.current, ...nuevas.map((n) => n.IdBitacora));
+    const recibidas = ultimoId.current ? r.data : [...r.data].reverse();
+    if (recibidas.length === 0) return;
+    const tope = ultimoId.current;
+    const nuevas = recibidas.filter((l) => l.IdBitacora > tope);
+    const actualizadas = recibidas.filter((l) => l.IdBitacora <= tope);
+    ultimoId.current = Math.max(tope, ...recibidas.map((n) => n.IdBitacora));
     if (pausadoRef.current) return;
-    setLineas((prev) => [...prev, ...nuevas].slice(-MAX_LINEAS));
+    setLineas((prev) => {
+      const porId = new Map(actualizadas.map((l) => [l.IdBitacora, l]));
+      const refrescadas = prev.map((l) => porId.get(l.IdBitacora) ?? l);
+      return [...refrescadas, ...nuevas].slice(-MAX_LINEAS);
+    });
+    // Sigue pendiente lo que fue aceptado pero aun no tiene duracion (la respuesta del proveedor no ha terminado).
+    const enCurso = (l: Llamada) => l.Resultado === 'OK' && l.DuracionMs === null && /proxy /.test(l.Detalle ?? '');
+    pendientes.current = [...ids.filter((id) => { const l = actualizadas.find((a) => a.IdBitacora === id); return l ? enCurso(l) : false; }), ...nuevas.filter(enCurso).map((l) => l.IdBitacora)].slice(-50);
   }, []);
 
   useEffect(() => {
@@ -87,19 +103,16 @@ export default function LiveConsole() {
     return () => clearInterval(id);
   }, [traer]);
 
-  // Siempre al final, como una terminal; si el usuario se desplazo hacia arriba, no se le mueve.
+  // Siempre al final, como una terminal: la ultima llamada queda a la vista. Para leer con calma esta el boton de pausa.
   useEffect(() => {
     const el = cuerpoRef.current;
-    if (!el) return;
-    const cerca = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if (cerca) el.scrollTop = el.scrollHeight;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [lineas]);
 
   return (
     <div className="console" role="log" aria-live="polite" aria-label="Bitácora en vivo">
       <div className="console-bar">
-        <span className="console-dots"><i /><i /><i /></span>
-        <span className="console-title">hl-console — bitácora en vivo</span>
+        <span className="console-title"><span className="c-prompt">root@hl-console</span>:<span className="c-path">~</span>$ tail -f bitacora.log</span>
         <span className={`console-status ${conectado ? (pausado ? 'paused' : 'live') : 'off'}`}>
           {conectado ? (pausado ? 'pausado' : 'en vivo') : 'sin conexión'}
         </span>
@@ -108,7 +121,7 @@ export default function LiveConsole() {
         </button>
       </div>
       <div className="console-body" ref={cuerpoRef}>
-        {lineas.length === 0 && <div className="console-line muted">$ tail -f bitacora.log<br />esperando llamadas…</div>}
+        {lineas.length === 0 && <div className="console-line muted">esperando llamadas…</div>}
         {lineas.map((l) => (
           <div key={l.IdBitacora} className={`console-line ${claseResultado(l.Resultado)}`}>
             <span className="c-time">{hora(l.Fecha)}</span>
@@ -118,7 +131,7 @@ export default function LiveConsole() {
             <span className="c-path">{resumenDetalle(l)}</span>
             <span className="c-result">{l.Resultado}</span>
             {l.Modelo && <span className="c-model">{providerShort(l.Proveedor)}/{l.Modelo}</span>}
-            {metricas(l) && <span className="c-metrics">{metricas(l)}</span>}
+            {metricas(l) ? <span className="c-metrics">{metricas(l)}</span> : (l.Resultado === 'OK' && /proxy /.test(l.Detalle ?? '') && <span className="c-pending">en curso…</span>)}
             {l.Resultado !== 'OK' && l.Detalle && !l.Detalle.startsWith('App:') && <span className="c-detail">{l.Detalle}</span>}
           </div>
         ))}

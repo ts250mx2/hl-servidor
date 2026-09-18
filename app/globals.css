@@ -289,12 +289,8 @@ tr:hover .td-actions { opacity: 1; }
   box-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 24px 48px -20px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.04);
   font-family: var(--font-mono); font-size: 0.72rem; overflow: hidden;
 }
-.console-bar { display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.7rem; background: #141827; border-bottom: 1px solid rgba(255,255,255,0.07); flex-shrink: 0; }
-.console-dots { display: inline-flex; gap: 5px; }
-.console-dots i { width: 10px; height: 10px; border-radius: 50%; background: #ff5f57; }
-.console-dots i:nth-child(2) { background: #febc2e; }
-.console-dots i:nth-child(3) { background: #28c840; }
-.console-title { flex: 1; color: #9aa3bd; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.console-bar { display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.7rem; background: #10131f; border-bottom: 1px solid rgba(255,255,255,0.07); flex-shrink: 0; }
+.console-title { flex: 1; color: #d7dbe7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .console-status { font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; padding: 0.15rem 0.5rem; border-radius: 999px; }
 .console-status.live { color: #4ade80; background: rgba(74,222,128,0.12); animation: consoleBlink 2.4s ease-in-out infinite; }
 .console-status.paused { color: #fbbf24; background: rgba(251,191,36,0.12); }
@@ -318,6 +314,7 @@ tr:hover .td-actions { opacity: 1; }
 .console-line.bad .c-result { color: #f87171; background: rgba(248,113,113,0.12); }
 .c-model { color: #9aa3bd; }
 .c-metrics { color: #5eead4; }
+.c-pending { color: #6b7189; font-style: italic; animation: consoleBlink 1.6s ease-in-out infinite; }
 .c-detail { color: #f0a8a8; flex-basis: 100%; padding-left: 4.7rem; }
 .c-prompt { color: #4ade80; font-weight: 700; }
 .console-cursor { display: inline-block; width: 7px; height: 0.95em; background: #d7dbe7; margin-left: 0.3rem; vertical-align: text-bottom; animation: consoleCursor 1s steps(2) infinite; }
