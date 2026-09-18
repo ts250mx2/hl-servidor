@@ -9,6 +9,7 @@ import { providerColor, providerShort } from '@/lib/providers';
 import ProviderMark from '@/components/ProviderMark';
 import Sparkline from '@/components/charts/Sparkline';
 import Donut from '@/components/charts/Donut';
+import LiveConsole from '@/components/LiveConsole';
 import { fmtMs, fmtNum, fmtUsd } from '@/components/charts/chartUtils';
 
 interface Stats {
@@ -119,25 +120,10 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* ── Tiles: catálogo ── */}
-        <div className="span-5 tiles">
-          <Link href="/llaves" className="tile" style={{ '--tile-accent': 'var(--indigo)' } as React.CSSProperties}>
-            <div className="tile-top"><span>Llaves de API</span><KeySquare size={16} /></div>
-            <div className="tile-value">{stats.llavesActivas} <small>/ {stats.llaves} activas</small></div>
-          </Link>
-          <Link href="/agentes" className="tile" style={{ '--tile-accent': 'var(--teal)' } as React.CSSProperties}>
-            <div className="tile-top"><span>Agentes</span><Bot size={16} /></div>
-            <div className="tile-value">{stats.agentesActivos} <small>/ {stats.agentes} activos</small></div>
-          </Link>
-          <Link href="/keys" className="tile" style={{ '--tile-accent': 'var(--coral)' } as React.CSSProperties}>
-            <div className="tile-top"><span>Keys de acceso</span><KeyRound size={16} /></div>
-            <div className="tile-value">{stats.keysActivas} <small>/ {stats.totalKeys} activas</small></div>
-          </Link>
-          <Link href="/ips" className="tile" style={{ '--tile-accent': 'var(--amber)' } as React.CSSProperties}>
-            <div className="tile-top"><span>IPs permitidas</span><ShieldCheck size={16} /></div>
-            <div className="tile-value">{stats.ipsActivas} <small>activas</small></div>
-          </Link>
-        </div>
+        {/* ── Consola en vivo ── */}
+        <section className="span-5 console-slot">
+          <LiveConsole />
+        </section>
 
         {/* ── Proveedores: uso ── */}
         <section className="card span-7">
@@ -172,6 +158,20 @@ export default function DashboardPage() {
 
         {/* ── Salud ── */}
         <section className="card span-5">
+          <div className="tiles-mini">
+            <Link href="/llaves" className="tile-mini" style={{ '--tile-accent': 'var(--indigo)' } as React.CSSProperties}>
+              <KeySquare size={14} /><span className="tile-mini-value">{stats.llavesActivas}<small>/{stats.llaves}</small></span><span className="tile-mini-label">Llaves</span>
+            </Link>
+            <Link href="/agentes" className="tile-mini" style={{ '--tile-accent': 'var(--teal)' } as React.CSSProperties}>
+              <Bot size={14} /><span className="tile-mini-value">{stats.agentesActivos}<small>/{stats.agentes}</small></span><span className="tile-mini-label">Agentes</span>
+            </Link>
+            <Link href="/keys" className="tile-mini" style={{ '--tile-accent': 'var(--coral)' } as React.CSSProperties}>
+              <KeyRound size={14} /><span className="tile-mini-value">{stats.keysActivas}<small>/{stats.totalKeys}</small></span><span className="tile-mini-label">Keys</span>
+            </Link>
+            <Link href="/ips" className="tile-mini" style={{ '--tile-accent': 'var(--amber)' } as React.CSSProperties}>
+              <ShieldCheck size={14} /><span className="tile-mini-value">{stats.ipsActivas}</span><span className="tile-mini-label">IPs</span>
+            </Link>
+          </div>
           <div className="chart-title" style={{ marginBottom: '0.75rem' }}>Salud del catálogo</div>
           <div className="health">
             <div className={`health-row ${stats.llavesCaducadas ? 'bad' : 'ok'}`}>
