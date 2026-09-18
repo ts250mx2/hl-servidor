@@ -25,6 +25,13 @@ interface Llamada {
   CostoUsd: string | number | null;
 }
 
+/** Llamada ya en pantalla; `enCurso` se decide al recibirla, no al dibujarla. */
+type Linea = Llamada & { enCurso: boolean };
+
+/** Aceptada por el proxy pero sin duracion todavia: la respuesta del proveedor no ha terminado. */
+const estaEnCurso = (l: Llamada, ahora: number): boolean =>
+  l.Resultado === 'OK' && l.DuracionMs === null && /proxy /.test(l.Detalle ?? '') && ahora - new Date(l.Fecha).getTime() < MAX_EN_CURSO_MS;
+
 /** Cada cuanto se pregunta por llamadas nuevas. */
 const INTERVALO_MS = 3000;
 /** Lineas que se conservan en pantalla; las mas viejas se descartan. */
@@ -60,7 +67,7 @@ function metricas(l: Llamada): string {
 
 /** Bitacora en vivo estilo terminal: las llamadas al webservice y al proxy conforme llegan. */
 export default function LiveConsole() {
-  const [lineas, setLineas] = useState<Llamada[]>([]);
+  const [lineas, setLineas] = useState<Linea[]>([]);
   const [pausado, setPausado] = useState(false);
   const [conectado, setConectado] = useState(true);
   const ultimoId = useRef(0);
@@ -82,7 +89,8 @@ export default function LiveConsole() {
     if (!r.success || !r.data) { setConectado(false); return; }
     setConectado(true);
     // La carga inicial llega de la mas reciente a la mas antigua; la consola va al reves, como tail -f.
-    const recibidas = ultimoId.current ? r.data : [...r.data].reverse();
+    const ahora = Date.now();
+    const recibidas: Linea[] = (ultimoId.current ? r.data : [...r.data].reverse()).map((l) => ({ ...l, enCurso: estaEnCurso(l, ahora) }));
     if (recibidas.length === 0) return;
     const tope = ultimoId.current;
     const nuevas = recibidas.filter((l) => l.IdBitacora > tope);
@@ -95,8 +103,7 @@ export default function LiveConsole() {
       return [...refrescadas, ...nuevas].slice(-MAX_LINEAS);
     });
     // Sigue pendiente lo que fue aceptado pero aun no tiene duracion (la respuesta del proveedor no ha terminado).
-    const enCurso = (l: Llamada) => l.Resultado === 'OK' && l.DuracionMs === null && /proxy /.test(l.Detalle ?? '') && Date.now() - new Date(l.Fecha).getTime() < MAX_EN_CURSO_MS;
-    pendientes.current = [...ids.filter((id) => { const l = actualizadas.find((a) => a.IdBitacora === id); return l ? enCurso(l) : false; }), ...nuevas.filter(enCurso).map((l) => l.IdBitacora)].slice(-50);
+    pendientes.current = [...ids.filter((id) => actualizadas.find((a) => a.IdBitacora === id)?.enCurso ?? false), ...nuevas.filter((l) => l.enCurso).map((l) => l.IdBitacora)].slice(-50);
   }, []);
 
   useEffect(() => {
@@ -133,7 +140,7 @@ export default function LiveConsole() {
             <span className="c-path">{resumenDetalle(l)}</span>
             <span className="c-result">{l.Resultado}</span>
             {l.Modelo && <span className="c-model">{providerShort(l.Proveedor)}/{l.Modelo}</span>}
-            {metricas(l) ? <span className="c-metrics">{metricas(l)}</span> : (l.Resultado === 'OK' && /proxy /.test(l.Detalle ?? '') && Date.now() - new Date(l.Fecha).getTime() < MAX_EN_CURSO_MS && <span className="c-pending">en curso…</span>)}
+            {metricas(l) ? <span className="c-metrics">{metricas(l)}</span> : (l.enCurso && <span className="c-pending">en curso…</span>)}
             {l.Resultado !== 'OK' && l.Detalle && !l.Detalle.startsWith('App:') && <span className="c-detail">{l.Detalle}</span>}
           </div>
         ))}
